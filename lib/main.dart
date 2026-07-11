@@ -32,13 +32,15 @@ void main() {
               child: SizedBox(
                 width: LayoutConfig.referenceWidth,
                 height: LayoutConfig.referenceHeight,
-                child: GameWidget<MyGame>(
-                  game: game,
-                  initialActiveOverlays: const ['Hud'],
-                  overlayBuilderMap: {
-                    'Hud': (context, game) => _HudOverlay(game: game),
-                    'GameOver': (context, game) => _GameOverOverlay(game: game),
-                  },
+                child: ClipRect(
+                  child: GameWidget<MyGame>(
+                    game: game,
+                    initialActiveOverlays: const ['Hud'],
+                    overlayBuilderMap: {
+                      'Hud': (context, game) => _HudOverlay(game: game),
+                      'GameOver': (context, game) => _GameOverOverlay(game: game),
+                    },
+                  ),
                 ),
               ),
             ),

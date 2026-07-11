@@ -18,6 +18,9 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
             height: LayoutConfig.referenceHeight,
           ),
         );
+
+  /// World bounds used for canvas clipping — nothing renders outside this rect.
+  late final Vector2 _clipSize;
   Player? _player;
   ObstacleManager? _obstacles;
 
@@ -59,6 +62,7 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   Future<void> onLoad() async {
     await super.onLoad();
 
+    _clipSize = Vector2(LayoutConfig.worldWidth, LayoutConfig.worldHeight);
     _lockViewportToReference();
 
     await _audio.load();
@@ -386,6 +390,17 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     scoreNotifier.dispose();
     specialCrashNotifier.dispose();
     super.onRemove();
+  }
+
+  /// Clip all rendering to the fixed world bounds so no sprites bleed onto the
+  /// letterbox area.  Called every frame by Flame before children are painted.
+  @override
+  void render(Canvas canvas) {
+    canvas.clipRect(
+      Rect.fromLTWH(0, 0, _clipSize.x, _clipSize.y),
+      clipOp: ClipOp.intersect,
+    );
+    super.render(canvas);
   }
 }
 
