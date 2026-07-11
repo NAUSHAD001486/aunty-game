@@ -161,6 +161,10 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   void onGameResize(Vector2 size) {
     super.onGameResize(size);
 
+    // Re-affirm clip bounds on every resize — mobile portrait rotation
+    // triggers resize events and _clipSize must stay locked to reference.
+    _clipSize = Vector2(LayoutConfig.worldWidth, LayoutConfig.worldHeight);
+
     // Canvas [size] is the browser widget; world layout always uses reference.
     _lockViewportToReference();
 
@@ -393,14 +397,18 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   }
 
   /// Clip all rendering to the fixed world bounds so no sprites bleed onto the
-  /// letterbox area.  Called every frame by Flame before children are painted.
+  /// letterbox area.  save/restore ensures the clip state is properly scoped
+  /// and doesn't leak across frames — critical for mobile web viewports where
+  /// the canvas is scaled by FittedBox.
   @override
   void render(Canvas canvas) {
+    canvas.save();
     canvas.clipRect(
       Rect.fromLTWH(0, 0, _clipSize.x, _clipSize.y),
       clipOp: ClipOp.intersect,
     );
     super.render(canvas);
+    canvas.restore();
   }
 }
 
