@@ -46,20 +46,27 @@
        renders in landscape. This only affects mobile browsers in
        portrait orientation — desktop and landscape are untouched.
        
+       Targets all Flutter web root elements: flutter-view (legacy),
+       flt-glass-pane (Flutter 3.x+ canvas host), and #flt fallback.
+       
        Standard CSS rotation pattern for web games:
-       1. Position at top-left of screen
-       2. Set width/height to swapped viewport dims (100vh x 100vw)
-       3. Rotate 90deg around top-left origin
+       1. position: fixed at top-left corner
+       2. Set dimensions to swapped viewport (100vh x 100vw)
+       3. rotate(90deg) around top-left origin
        4. translateY(-100%) to slide into view */
     @media screen and (orientation: portrait) {
-      flutter-view, #flt {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100vh;
-        height: 100vw;
-        transform: rotate(90deg) translateY(-100%);
-        transform-origin: top left;
+      flutter-view,
+      flt-glass-pane,
+      #flt {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vh !important;
+        height: 100vw !important;
+        max-width: none !important;
+        max-height: none !important;
+        transform: rotate(90deg) translateY(-100%) !important;
+        transform-origin: top left !important;
       }
     }
   </style>
