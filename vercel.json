@@ -1,0 +1,10 @@
+{
+  "buildCommand": "flutter build web --release --web-renderer canvaskit",
+  "outputDirectory": "build/web",
+  "framework": null,
+  "installCommand": "flutter pub get",
+  "github": {
+    "enabled": true,
+    "silent": false
+  }
+}
