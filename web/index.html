@@ -44,17 +44,22 @@
     }
     /* Mobile portrait: rotate Flutter view 90° so game always
        renders in landscape. This only affects mobile browsers in
-       portrait orientation — desktop and landscape are untouched. */
+       portrait orientation — desktop and landscape are untouched.
+       
+       Standard CSS rotation pattern for web games:
+       1. Position at top-left of screen
+       2. Set width/height to swapped viewport dims (100vh x 100vw)
+       3. Rotate 90deg around top-left origin
+       4. translateY(-100%) to slide into view */
     @media screen and (orientation: portrait) {
       flutter-view, #flt {
-        transform: rotate(90deg);
-        transform-origin: center center;
+        position: fixed;
+        top: 0;
+        left: 0;
         width: 100vh;
         height: 100vw;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        translate: -50% -50%;
+        transform: rotate(90deg) translateY(-100%);
+        transform-origin: top left;
       }
     }
   </style>
