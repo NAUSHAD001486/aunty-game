@@ -114,30 +114,19 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: Center(
-        child: Transform.rotate(
-          angle: -math.pi / 2, // -90° = landscape-left
-          child: SizedBox(
-            width: screenH,  // swap dimensions
-            height: screenW,
-            child: ClipRect(
-              child: FittedBox(
-                fit: BoxFit.contain,
-                child: SizedBox(
-                  width: LayoutConfig.referenceWidth,
-                  height: LayoutConfig.referenceHeight,
-                  child: ClipRect(
-                    child: GameWidget<MyGame>(
-                      game: widget.game,
-                      initialActiveOverlays: const ['Hud'],
-                      overlayBuilderMap: {
-                        'Hud': (context, game) => _HudOverlay(game: game),
-                        'GameOver': (context, game) => _GameOverOverlay(game: game),
-                      },
-                    ),
-                  ),
-                ),
-              ),
+      body: Transform.rotate(
+        angle: -math.pi / 2, // -90° = landscape-left
+        child: SizedBox(
+          width: screenH,  // swap: portrait height becomes landscape width
+          height: screenW, // swap: portrait width becomes landscape height
+          child: ClipRect(
+            child: GameWidget<MyGame>(
+              game: widget.game,
+              initialActiveOverlays: const ['Hud'],
+              overlayBuilderMap: {
+                'Hud': (context, game) => _HudOverlay(game: game),
+                'GameOver': (context, game) => _GameOverOverlay(game: game),
+              },
             ),
           ),
         ),
