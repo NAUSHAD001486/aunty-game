@@ -1,36 +1,21 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Aunty — A Flutter Flame Game">
 
-  <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="aunty">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>aunty</title>
+  <title>Aunty</title>
   <link rel="manifest" href="manifest.json">
 
   <style>
@@ -42,82 +27,9 @@
       width: 100%;
       height: 100%;
     }
-
-    /* Mobile portrait: rotate Flutter view 90° so game always
-       renders in landscape. Only affects mobile browsers in
-       portrait — desktop and landscape untouched.
-
-       Uses both CSS media query AND JS observer because Flutter
-       creates its DOM elements dynamically after page load —
-       CSS alone may not catch them in time. */
-    @media screen and (orientation: portrait) {
-      flutter-view,
-      flt-glass-pane,
-      flt-scene-host,
-      #flt {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vh !important;
-        height: 100vw !important;
-        max-width: none !important;
-        max-height: none !important;
-        transform: rotate(90deg) translateY(-100%) !important;
-        transform-origin: top left !important;
-      }
-    }
   </style>
 </head>
 <body>
-  <script>
-    // JS fallback: observe DOM for Flutter elements and apply
-    // rotation in portrait. CSS media query handles static cases,
-    // this handles dynamic element creation by Flutter.
-    (function () {
-      function applyRotation() {
-        if (window.matchMedia('(orientation: portrait)').matches) {
-          var els = document.querySelectorAll(
-            'flutter-view, flt-glass-pane, flt-scene-host, #flt'
-          );
-          els.forEach(function (el) {
-            el.style.cssText +=
-              'position:fixed !important;top:0 !important;left:0 !important;' +
-              'width:100vh !important;height:100vw !important;' +
-              'max-width:none !important;max-height:none !important;' +
-              'transform:rotate(90deg) translateY(-100%) !important;' +
-              'transform-origin:top left !important;';
-          });
-        } else {
-          // Landscape: remove any inline rotation styles
-          var els = document.querySelectorAll(
-            'flutter-view, flt-glass-pane, flt-scene-host, #flt'
-          );
-          els.forEach(function (el) {
-            el.style.removeProperty('transform');
-            el.style.removeProperty('position');
-            el.style.removeProperty('top');
-            el.style.removeProperty('left');
-            el.style.removeProperty('width');
-            el.style.removeProperty('height');
-            el.style.removeProperty('max-width');
-            el.style.removeProperty('max-height');
-            el.style.removeProperty('transform-origin');
-          });
-        }
-      }
-
-      // Run on load and on every DOM change until Flutter is ready
-      var observer = new MutationObserver(applyRotation);
-      observer.observe(document.body, { childList: true, subtree: true });
-
-      // Also run on orientation change
-      window.addEventListener('resize', applyRotation);
-      window.addEventListener('orientationchange', applyRotation);
-
-      // Initial run
-      applyRotation();
-    })();
-  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

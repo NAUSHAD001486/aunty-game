@@ -1,32 +1,125 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flame/game.dart';
+import 'package:flutter/foundation.dart';
 import 'game/layout_config.dart';
 import 'game/my_game.dart';
 
-/// Main entry point for the Flutter application.
+/// Main entry point.
 ///
-/// The game canvas is letterboxed inside a fixed aspect-ratio frame that
-/// matches the Medium Phone API 36.0 landscape baseline, so desktop Chrome
-/// and other resolutions scale uniformly without stretching.
+/// On native (APK), orientation is locked to landscape via SystemChrome.
+/// On web, we detect portrait and rotate the game widget 90° in Dart
+/// so Flutter's coordinate system + hit testing stay correct.
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-  SystemChrome.setPreferredOrientations([
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
-  ]);
+  if (!kIsWeb) {
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
 
   final game = MyGame();
 
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        body: Center(
-          child: AspectRatio(
-            aspectRatio: LayoutConfig.aspectRatio,
+      home: _GameRoot(game: game),
+    ),
+  );
+}
+
+/// Renders the game identically on ALL platforms.
+///
+/// On web portrait: wraps the game in Transform.rotate(90°) so the
+/// landscape game fills the portrait screen sideways — exactly like
+/// what the APK's orientation lock does at the OS level.
+///
+/// On native / web landscape: renders normally, no rotation.
+class _GameRoot extends StatefulWidget {
+  const _GameRoot({required this.game});
+
+  final MyGame game;
+
+  @override
+  State<_GameRoot> createState() => _GameRootState();
+}
+
+class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    if (kIsWeb) {
+      WidgetsBinding.instance.addObserver(this);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (kIsWeb) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPortrait = MediaQuery.of(context).size.height >
+        MediaQuery.of(context).size.width;
+    final needRotate = kIsWeb && isPortrait;
+
+    final gameWidget = Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: AspectRatio(
+          aspectRatio: LayoutConfig.aspectRatio,
+          child: ClipRect(
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: LayoutConfig.referenceWidth,
+                height: LayoutConfig.referenceHeight,
+                child: ClipRect(
+                  child: GameWidget<MyGame>(
+                    game: widget.game,
+                    initialActiveOverlays: const ['Hud'],
+                    overlayBuilderMap: {
+                      'Hud': (context, game) => _HudOverlay(game: game),
+                      'GameOver': (context, game) => _GameOverOverlay(game: game),
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (!needRotate) {
+      return gameWidget;
+    }
+
+    // Web portrait: rotate the entire game 90° so it appears landscape.
+    // Transform.rotate keeps Flutter's hit testing + coordinates correct.
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(
+        child: Transform.rotate(
+          angle: -math.pi / 2, // -90° = landscape-left
+          child: SizedBox(
+            width: screenH,  // swap dimensions
+            height: screenW,
             child: ClipRect(
               child: FittedBox(
                 fit: BoxFit.contain,
@@ -35,7 +128,7 @@ void main() {
                   height: LayoutConfig.referenceHeight,
                   child: ClipRect(
                     child: GameWidget<MyGame>(
-                      game: game,
+                      game: widget.game,
                       initialActiveOverlays: const ['Hud'],
                       overlayBuilderMap: {
                         'Hud': (context, game) => _HudOverlay(game: game),
@@ -49,8 +142,8 @@ void main() {
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _HudOverlay extends StatelessWidget {
