@@ -20,7 +20,7 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         );
 
   /// World bounds used for canvas clipping — nothing renders outside this rect.
-  late final Vector2 _clipSize;
+  Vector2 _clipSize = Vector2.zero();
   Player? _player;
   ObstacleManager? _obstacles;
 
