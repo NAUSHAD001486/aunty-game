@@ -33,6 +33,10 @@ dependencies:
   # Flame engine for game development (latest compatible version)
   flame: ^1.34.0
   flame_audio: ^2.11.8
+  web: ^1.1.0
+  firebase_core: ^4.12.1
+  firebase_auth: ^6.5.6
+  cloud_firestore: ^6.7.1
 
 dev_dependencies:
   flutter_test:
@@ -49,9 +53,18 @@ dev_dependencies:
 flutter:
   uses-material-design: false
 
-  # Assets for game sprites
+  # Runtime assets only (no unused / HD plates — keeps first load ~1s).
   assets:
-    - assets/images/character/
-    - assets/images/character/background/
-    - assets/images/character/out/
-    - assets/sound/
+    - assets/images/landing-preview.png
+    - assets/images/character/1-character.png
+    - assets/images/character/2-character.png
+    - assets/images/character/3-character.png
+    - assets/images/character/4-character.png
+    - assets/images/character/5-character.png
+    - assets/images/character/background.png
+    - assets/images/character/background/roted.png
+    - assets/images/character/out/1-out.png
+    - assets/images/character/out/2-out.png
+    - assets/sound/tab.mp3
+    - assets/sound/out.mp3
+    - assets/sound/sound.mp3

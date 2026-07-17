@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users_scores/{playerId} {
+      // Signed-in players can read the leaderboard / tournament ranks.
+      allow read: if request.auth != null;
+
+      // Doc id = stable browser playerId (localStorage), not necessarily auth.uid.
+      allow create, update: if request.auth != null
+        && request.resource.data.playerId == playerId
+        && request.resource.data.totalScore is int
+        && request.resource.data.totalScore >= 0
+        && request.resource.data.authUid == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    // Admin-managed landing promo + confirmed winner (read-only for players).
+    match /game_metadata/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // One prize claim per Auth uid. Create only if still the confirmed winner
+    // and no claim doc exists yet. Never update/delete from clients.
+    match /winners_claims/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.authUid == request.auth.uid
+        && request.resource.data.isProcessed == false
+        && request.resource.data.fullName is string
+        && request.resource.data.upiId is string
+        && request.resource.data.fullName.size() > 0
+        && request.resource.data.upiId.size() > 0
+        && request.auth.uid ==
+            get(/databases/$(database)/documents/game_metadata/confirmed_winner)
+              .data.authUid;
+
+      allow update, delete: if false;
+    }
+  }
+}

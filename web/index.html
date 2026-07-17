@@ -1,16 +1,18 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="description" content="Aunty — A Flutter Flame Game">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description" content="Aunty — free browser game. Dodge bamboo. Keep flying.">
+  <meta name="theme-color" content="#F4F6F8">
 
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="aunty">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Aunty">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <link rel="icon" type="image/png" href="favicon.png"/>
@@ -18,18 +20,366 @@
   <title>Aunty</title>
   <link rel="manifest" href="manifest.json">
 
+  <link rel="dns-prefetch" href="https://www.gstatic.com">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preload" href="flutter_bootstrap.js" as="script">
+  <link rel="preload" as="image" href="assets/assets/images/landing-preview.png">
+
+  <script>
+    (function () {
+      var ua = (navigator.userAgent || '').toLowerCase();
+      var mobile = /android|iphone|ipad|ipod|mobile/.test(ua) ||
+        (navigator.maxTouchPoints > 1 && /macintosh/.test(ua));
+      if (mobile) document.documentElement.classList.add('mobile-web');
+    })();
+  </script>
+
   <style>
+    :root {
+      --surface: #F4F6F8;
+      --ink: #121820;
+      --muted: #5A6570;
+      --cyan: #0E8FA8;
+      --gold: #B8860B;
+      --line: rgba(10, 22, 32, 0.08);
+    }
+
     html, body {
       margin: 0;
       padding: 0;
-      background: #000;
-      overflow: hidden;
       width: 100%;
       height: 100%;
+      background: var(--surface);
+      color: var(--muted);
+      font-family: system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    html:not(.is-playing),
+    body:not(.is-playing) {
+      overflow: hidden !important;
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    #flutter-host {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      background: var(--surface);
+      z-index: 1;
+    }
+
+    #flutter-host flutter-view,
+    #flutter-host flt-glass-pane,
+    #flutter-host flt-scene-host,
+    #flutter-host canvas {
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100% !important;
+      max-height: 100% !important;
+    }
+
+    html.mobile-web body:not(.is-playing) #flutter-host {
+      touch-action: pan-y;
+    }
+
+    html.is-playing,
+    body.is-playing {
+      overflow: hidden !important;
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+    }
+
+    body.is-playing #flutter-host {
+      touch-action: none;
+    }
+
+    /*
+     * Instant HTML landing shell — shown before Flutter boots so the site
+     * feels open immediately. Game loads inside the play card after handoff.
+     */
+    #landing-shell {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      background: var(--surface);
+      box-sizing: border-box;
+      padding: 10px 10px 24px;
+    }
+
+    #landing-shell .play-card {
+      position: relative;
+      width: 100%;
+      height: 66vh;
+      height: 66dvh;
+      min-height: 240px;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(10, 22, 32, 0.09);
+      box-shadow: 0 8px 18px rgba(10, 22, 32, 0.09);
+      background: #000 center / cover no-repeat;
+      background-image: url('assets/assets/images/landing-preview.png');
+    }
+
+    #landing-shell .play-card::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.35);
+    }
+
+    #landing-shell .play-cta {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      pointer-events: none;
+    }
+
+    #landing-shell .play-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 22px;
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.9);
+      color: #0A1218;
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.3px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    #landing-shell .play-pill .dot {
+      width: 14px;
+      height: 14px;
+      border: 2px solid #163846;
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    #landing-shell .highlights {
+      margin-top: 12px;
+      padding: 0 2px;
+    }
+
+    #landing-shell .eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.6px;
+      color: rgba(90, 101, 112, 0.85);
+      margin: 0 0 12px 4px;
+    }
+
+    #landing-shell .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    #landing-shell .card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      min-height: 140px;
+      box-shadow: 0 4px 12px rgba(10, 22, 32, 0.04);
+    }
+
+    #landing-shell .card h3 {
+      margin: 0 0 10px;
+      font-size: 11.5px;
+      font-weight: 800;
+      letter-spacing: 1.1px;
+    }
+
+    #landing-shell .card.offer h3 { color: #C44900; font-size: 18px; letter-spacing: -0.2px; }
+    #landing-shell .card.winner h3 { color: #8B6914; text-align: center; font-size: 18px; letter-spacing: -0.2px; }
+    #landing-shell .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+    #landing-shell .badge.offer { background: #E85D04; }
+    #landing-shell .badge.winner { background: #8B6914; }
+    #landing-shell .sub {
+      margin: 2px 0 10px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    #landing-shell .card.winner .sub { text-align: center; }
+
+    #landing-shell .skel {
+      background: #EEF1F4;
+      border-radius: 10px;
+    }
+
+    #landing-shell .skel.img { height: 88px; }
+    #landing-shell .skel.line { height: 12px; margin-top: 12px; width: 72%; }
+    #landing-shell .skel.price { height: 18px; margin-top: 10px; width: 36%; }
+    #landing-shell .skel.avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      margin: 8px auto 0;
+      border: 2px solid var(--gold);
+    }
+
+    @media (max-width: 520px) {
+      #landing-shell { padding: 8px 6px 20px; }
+      #landing-shell .play-card {
+        height: 62vh;
+        height: 62dvh;
+        border-radius: 16px;
+      }
+      #landing-shell .cards { grid-template-columns: 1fr; }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
   </style>
+
+  <script>
+    (function () {
+      var PLAYER_KEY = 'aunty_stable_player_id';
+      var TOTAL_KEY = 'aunty_cached_total_score';
+      var COOKIE_DAYS = 400;
+
+      function readCookie(name) {
+        try {
+          var parts = ('; ' + document.cookie).split(';');
+          for (var i = 0; i < parts.length; i++) {
+            var p = parts[i].trim();
+            if (p.indexOf(name + '=') === 0) {
+              return decodeURIComponent(p.substring(name.length + 1));
+            }
+          }
+        } catch (e) {}
+        return '';
+      }
+
+      function writeCookie(name, value) {
+        try {
+          var maxAge = COOKIE_DAYS * 24 * 60 * 60;
+          document.cookie = name + '=' + encodeURIComponent(value) +
+            ';path=/;max-age=' + maxAge + ';SameSite=Lax';
+        } catch (e) {}
+      }
+
+      function lsGet(key) {
+        try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+      }
+
+      function lsSet(key, value) {
+        try { localStorage.setItem(key, value); } catch (e) {}
+      }
+
+      window.__auntyStore = {
+        getPlayerId: function () {
+          var v = lsGet(PLAYER_KEY) || readCookie(PLAYER_KEY);
+          if (v && !lsGet(PLAYER_KEY)) lsSet(PLAYER_KEY, v);
+          return v;
+        },
+        setPlayerId: function (id) {
+          if (!id) return;
+          lsSet(PLAYER_KEY, id);
+          writeCookie(PLAYER_KEY, id);
+        },
+        getTotal: function () {
+          var v = lsGet(TOTAL_KEY) || readCookie(TOTAL_KEY);
+          if (v && !lsGet(TOTAL_KEY)) lsSet(TOTAL_KEY, v);
+          return v;
+        },
+        setTotal: function (n) {
+          if (n === undefined || n === null || n === '') return;
+          var s = String(n);
+          lsSet(TOTAL_KEY, s);
+          writeCookie(TOTAL_KEY, s);
+        }
+      };
+    })();
+
+    function hideLandingShell() {
+      var el = document.getElementById('landing-shell');
+      if (el) el.remove();
+      // Legacy id from older builds.
+      var old = document.getElementById('loading');
+      if (old) old.remove();
+    }
+
+    window.addEventListener('flutter-first-frame', function () {
+      hideLandingShell();
+      if (!document.body.classList.contains('is-playing')) {
+        document.documentElement.classList.remove('is-playing');
+        document.body.classList.remove('is-playing');
+      }
+    });
+
+    // Failsafe if Flutter is very slow — keep shell, never trap on black.
+    setTimeout(hideLandingShell, 20000);
+  </script>
 </head>
 <body>
+  <div id="flutter-host"></div>
+
+  <div id="landing-shell" aria-label="Aunty home">
+    <div class="play-card">
+      <div class="play-cta">
+        <div class="play-pill">
+          <span class="dot" aria-hidden="true"></span>
+          Loading…
+        </div>
+      </div>
+    </div>
+    <section class="highlights" aria-hidden="true">
+      <div class="cards">
+        <div class="card offer">
+          <span class="badge offer">HOT DEAL</span>
+          <h3>Today's Special</h3>
+          <p class="sub">Limited-time offer</p>
+          <div class="skel img"></div>
+          <div class="skel line"></div>
+          <div class="skel price"></div>
+        </div>
+        <div class="card winner">
+          <span class="badge winner">CHAMPION</span>
+          <h3>Latest Winner</h3>
+          <p class="sub">This week’s top player</p>
+          <div class="skel avatar"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Firebase JS is loaded automatically by FlutterFire (firebase_core_web). -->
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

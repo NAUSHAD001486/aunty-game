@@ -32,8 +32,10 @@ class LayoutConfig {
   // Bamboo / obstacle proportions (from tuned reference pixels)
   // ---------------------------------------------------------------------------
 
-  /// Visual corridor gap preserved from the original `gap = 240` constant.
-  static const double gapHeightFactor = 240 / referenceHeight;
+  /// Vertical corridor between top & bottom bamboo (original tuned `gap = 240`).
+  /// - Smaller number → gap **closes** (harder)
+  /// - Larger number → gap **opens** (easier)
+  static const double gapHeightFactor = 180 / referenceHeight;
 
   static const double minBottomHeightFactor = 180 / referenceHeight;
   static const double bottomHeightRangeFactor = 0.35;

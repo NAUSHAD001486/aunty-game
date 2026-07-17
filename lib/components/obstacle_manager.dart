@@ -1,14 +1,15 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flame/components.dart';
-import 'package:flutter/material.dart';
 import '../game/config.dart';
 import '../game/layout_config.dart';
 import 'bamboo_obstacle.dart';
 
 class ObstacleManager extends Component with HasGameRef {
-  final VoidCallback onPlayerPassedObstacle;
+  /// Points to add when the player clears bamboo (1 per old stalk, 2 per live pair).
+  final void Function(int points) onScore;
 
-  ObstacleManager({required this.onPlayerPassedObstacle});
+  ObstacleManager({required this.onScore});
 
   final Random _rand = Random();
 
@@ -19,23 +20,60 @@ class ObstacleManager extends Component with HasGameRef {
   final List<BambooObstacle> _oldPipes = [];
   final Set<BambooObstacle> _scoredPipes = {};
 
+  Sprite? _sprite1;
+  Sprite? _sprite2;
+
+  double _runSpeed = GameConfig.obstacleSpeed;
   double _speed = GameConfig.obstacleSpeed;
+  bool _frozen = false;
   double _lastPipeWidth = 120;
   bool _isSpawning = false;
+  bool _spawnNextFrame = false;
+
+  /// 1.0 at start → rises toward max as score grows (for footer sync).
+  double get speedScale => _runSpeed / GameConfig.obstacleSpeed;
 
   /// Locked world bounds — never read [gameRef.size] for layout.
   static const double _screenW = LayoutConfig.referenceWidth;
   static const double _screenH = LayoutConfig.referenceHeight;
 
+  static final double _playerX =
+      LayoutConfig.widthOf(LayoutConfig.playerXFactor, _screenW);
+  static final double _respawnX =
+      LayoutConfig.widthOf(LayoutConfig.respawnTriggerXFactor, _screenW);
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+
+    final path1 = 'character/out/1-out.png';
+    final img1 = game.images.containsKey(path1)
+        ? game.images.fromCache(path1)
+        : await game.images.load(path1);
+    _sprite1 = Sprite(img1);
     _spawn();
+    unawaited(_loadSecondBambooSprite());
+  }
+
+  Future<void> _loadSecondBambooSprite() async {
+    try {
+      const path = 'character/out/2-out.png';
+      final img = game.images.containsKey(path)
+          ? game.images.fromCache(path)
+          : await game.images.load(path);
+      _sprite2 = Sprite(img);
+    } catch (_) {}
   }
 
   @override
   void update(double dt) {
     super.update(dt);
+
+    // Spread spawn cost onto a quiet frame (avoids hitch with score same frame).
+    if (_spawnNextFrame) {
+      _spawnNextFrame = false;
+      _spawn();
+    }
 
     if (_bottom == null || _midTop == null) return;
 
@@ -48,11 +86,11 @@ class ObstacleManager extends Component with HasGameRef {
       pipe.x -= move;
     }
 
-    final playerX = LayoutConfig.widthOf(LayoutConfig.playerXFactor, _screenW);
-    _tryScorePipe(_bottom!, playerX);
-    _tryScorePipe(_midTop!, playerX);
+    // One score event per active bamboo pair (still +2 total via MyGame) —
+    // was two HUD/speed updates in the same frames and felt like a stutter.
+    _tryScoreActivePair();
     for (final pipe in _oldPipes) {
-      _tryScorePipe(pipe, playerX);
+      _tryScorePipe(pipe, _playerX);
     }
 
     for (int i = _oldPipes.length - 1; i >= 0; i--) {
@@ -64,19 +102,47 @@ class ObstacleManager extends Component with HasGameRef {
       }
     }
 
-    if (!_isSpawning &&
-        _bottom!.x <
-            LayoutConfig.widthOf(LayoutConfig.respawnTriggerXFactor, _screenW)) {
-      _spawn();
+    if (!_isSpawning && !_spawnNextFrame && _bottom!.x < _respawnX) {
+      _spawnNextFrame = true;
     }
   }
 
-  Future<void> _spawn() async {
+  /// Scores the current top+bottom pair once when the lower stalk clears.
+  void _tryScoreActivePair() {
+    final bottom = _bottom;
+    final top = _midTop;
+    if (bottom == null || top == null) return;
+    if (_scoredPipes.contains(bottom)) return;
+
+    final rightEdge = bottom.x + (bottom.size.x / 2);
+    if (rightEdge < _playerX) {
+      _scoredPipes.add(bottom);
+      _scoredPipes.add(top);
+      // Same total as before (+1 per stalk) but one HUD/speed/audio update.
+      onScore(2);
+    }
+  }
+
+  void _tryScorePipe(BambooObstacle pipe, double playerX) {
+    if (_scoredPipes.contains(pipe)) return;
+    final rightEdge = pipe.x + (pipe.size.x / 2);
+    if (rightEdge < playerX) {
+      _scoredPipes.add(pipe);
+      onScore(1);
+    }
+  }
+
+  void _spawn() {
     if (_isSpawning) return;
+    final sprite1 = _sprite1;
+    if (sprite1 == null) return;
+
     _isSpawning = true;
     try {
-      final img = _rand.nextBool() ? '1-out.png' : '2-out.png';
-      final sprite = Sprite(await game.images.load('character/out/$img'));
+      final sprite2 = _sprite2;
+      final useSecond = sprite2 != null && _rand.nextBool();
+      final sprite = useSecond ? sprite2 : sprite1;
+      final img = useSecond ? '2-out.png' : '1-out.png';
 
       if (_bottom != null) _oldPipes.add(_bottom!);
       if (_midTop != null) _oldPipes.add(_midTop!);
@@ -103,9 +169,9 @@ class ObstacleManager extends Component with HasGameRef {
 
       final topPipeHeight = LayoutConfig.heightOf(topPipeHeightFactor, screenH);
 
-      final realWidth = sprite.image.width.toDouble();
+      // Lock on-screen bamboo width to original art metrics.
       final double pipeWidth =
-          img == '2-out.png' ? realWidth * 0.105 : realWidth * 0.35;
+          img == '2-out.png' ? 3264 * 0.105 : 1024 * 0.35;
 
       _lastPipeWidth = pipeWidth;
 
@@ -119,6 +185,7 @@ class ObstacleManager extends Component with HasGameRef {
 
       _bottom = BambooObstacle(
         sprite: sprite,
+        variant: img,
         anchor: Anchor.bottomCenter,
         position: Vector2(startX, screenH + verticalOffset),
         size: Vector2(pipeWidth, bottomHeight),
@@ -126,6 +193,7 @@ class ObstacleManager extends Component with HasGameRef {
 
       _midTop = BambooObstacle(
         sprite: sprite,
+        variant: img,
         anchor: Anchor.topCenter,
         position: Vector2(startX + zigzagOffset, topY),
         size: Vector2(pipeWidth, topPipeHeight),
@@ -137,12 +205,18 @@ class ObstacleManager extends Component with HasGameRef {
     }
   }
 
-  void _tryScorePipe(BambooObstacle pipe, double playerX) {
-    if (_scoredPipes.contains(pipe)) return;
-    final rightEdge = pipe.x + (pipe.size.x / 2);
-    if (rightEdge < playerX) {
-      _scoredPipes.add(pipe);
-      onPlayerPassedObstacle();
+  /// Score 0–1: base speed. Score 2,4,6…: add [GameConfig.speedBumpAmount] each time.
+  void applyScoreProgress(int score) {
+    final steps = score ~/ GameConfig.speedBumpEveryScore;
+    // 1.5 → +15 px/s so the requested step feels good in-game.
+    final bumped = GameConfig.obstacleSpeed +
+        steps * GameConfig.speedBumpAmount * 10.0;
+    _runSpeed = bumped.clamp(
+      GameConfig.obstacleSpeed,
+      GameConfig.obstacleSpeedMax,
+    );
+    if (!_frozen) {
+      _speed = _runSpeed;
     }
   }
 
@@ -157,11 +231,15 @@ class ObstacleManager extends Component with HasGameRef {
     _bottom = null;
     _midTop = null;
 
-    _speed = GameConfig.obstacleSpeed;
+    _frozen = false;
+    _runSpeed = GameConfig.obstacleSpeed;
+    _speed = _runSpeed;
     _spawn();
   }
 
   void setFrozen(bool frozen) {
-    _speed = frozen ? 0 : GameConfig.obstacleSpeed;
+    _frozen = frozen;
+    // Resume at the ramped speed, not the base — or progress would reset mid-run.
+    _speed = frozen ? 0 : _runSpeed;
   }
 }

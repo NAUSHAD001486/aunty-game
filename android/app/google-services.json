@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "307616113629",
+    "project_id": "aunty-b7c60",
+    "storage_bucket": "aunty-b7c60.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:307616113629:android:db7bae002953eb27a20c34",
+        "android_client_info": {
+          "package_name": "com.example.aunty"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAEEpdPxQ1qs1WAHEsArMma22qYPaPQX1U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

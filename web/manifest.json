@@ -3,10 +3,10 @@
     "short_name": "aunty",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
+    "background_color": "#000000",
+    "theme_color": "#000000",
     "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "orientation": "landscape",
     "prefer_related_applications": false,
     "icons": [
         {

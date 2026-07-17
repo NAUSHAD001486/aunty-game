@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
-import 'package:flame/sprite.dart';
 import '../game/config.dart';
 import '../game/layout_config.dart';
 
@@ -15,10 +16,11 @@ class Player extends PositionComponent
   void Function(Vector2?)? onCrashed;
 
   late SpriteAnimationComponent _visual;
-  late SpriteAnimation _jumpAnimation;
   late SpriteAnimation _idleAnimation;
+  SpriteAnimation? _jumpAnimation;
 
   bool _isJumpAnimating = false;
+  bool _jumpFramesReady = false;
 
   Player()
       : super(
@@ -26,27 +28,24 @@ class Player extends PositionComponent
           anchor: Anchor.center,
         );
 
+  static const _idleAsset = 'character/5-character.png';
+  static const _jumpAssets = [
+    'character/1-character.png',
+    'character/2-character.png',
+    'character/3-character.png',
+    'character/4-character.png',
+  ];
+
   @override
   Future<void> onLoad() async {
     await super.onLoad();
 
-    final frames = [
-      await game.images.load('character/1-character.png'),
-      await game.images.load('character/2-character.png'),
-      await game.images.load('character/3-character.png'),
-      await game.images.load('character/4-character.png'),
-      await game.images.load('character/5-character.png'),
-    ];
-
-    // TRUE 21 FPS (video synced)
-    _jumpAnimation = SpriteAnimation.spriteList(
-      frames.take(4).map(Sprite.new).toList(),
-      stepTime: 1 / 14,
-      loop: false,
-    );
-
+    // Idle frame is preloaded by [MyGame] boot set — no duplicate decode.
+    final idleImg = game.images.containsKey(_idleAsset)
+        ? game.images.fromCache(_idleAsset)
+        : await game.images.load(_idleAsset);
     _idleAnimation = SpriteAnimation.spriteList(
-      [Sprite(frames.last)],
+      [Sprite(idleImg)],
       stepTime: 0.10,
       loop: true,
     );
@@ -54,72 +53,82 @@ class Player extends PositionComponent
     _visual = SpriteAnimationComponent(
       animation: _idleAnimation,
       anchor: Anchor.center,
-      position: Vector2(size.x / 2, size.y / 2), // center visual on hitbox
+      position: Vector2(size.x / 2, size.y / 2),
     );
-
-    _visual.scale = Vector2.all(0.2);
-
+    _visual.scale = Vector2.all(0.8);
     add(_visual);
-    // Split collision into body parts so tilted sprite gets a tighter fit.
+
+    // Jump cycle loads in background during Tap-to-Play / landing scroll.
+    unawaited(_loadJumpFrames());
+
     addAll([
-      // Head + shoulder area(left hand sabse upar)
       RectangleHitbox(
         position: Vector2(size.x * 1.19, size.y * -0.60),
         size: Vector2(size.x * 0.22, size.y * 0.14),
       ),
-      // Chest / torso (right hand niche wala hand)
       RectangleHitbox(
         position: Vector2(size.x * 0.07, size.y * -0.21),
         size: Vector2(size.x * 1.84, size.y * 0.17),
       ),
-      // Waist / upper legs (last pair ka hissa (1))
       RectangleHitbox(
         position: Vector2(size.x * -0.98, size.y * 0.26),
         size: Vector2(size.x * 0.68, size.y * 0.30),
       ),
-      // Lower dress / pair ka 3 number hai  (3)
       RectangleHitbox(
         position: Vector2(size.x * -0.48, size.y * -0.04),
         size: Vector2(size.x * 0.45, size.y * 0.42),
       ),
-      // pair ka 2 number  (2)
        RectangleHitbox(
         position: Vector2(size.x * -0.68, size.y * 0.08),
         size: Vector2(size.x * 0.40, size.y * 0.40),
       ),
-      //pair ka 4 number  (4)
-
        RectangleHitbox(
         position: Vector2(size.x * -0.28, size.y * -0.08),
         size: Vector2(size.x * 0.40, size.y * 0.40),
       ),
-      //pair ka 5 number   (5)
-
        RectangleHitbox(
         position: Vector2(size.x * -0.04, size.y * -0.18),
         size: Vector2(size.x * 0.45, size.y * 0.47),
       ),
-      // pair ka 6 number.  (6)
        RectangleHitbox(
         position: Vector2(size.x * 0.18, size.y * -0.28),
         size: Vector2(size.x * 0.40, size.y * 0.49),
       ),
-      //pair ka 7 number   (7)
        RectangleHitbox(
         position: Vector2(size.x * 0.38, size.y * -0.38),
         size: Vector2(size.x * 0.40, size.y * 0.40),
       ),
-      //pair ka 8 number (8)
        RectangleHitbox(
         position: Vector2(size.x * 0.58, size.y * -0.48),
         size: Vector2(size.x * 0.40, size.y * 0.40),
       ),
-      // pair ka 9 number   (9)
        RectangleHitbox(
         position: Vector2(size.x * 0.72, size.y * -0.48),
         size: Vector2(size.x * 0.40, size.y * 0.40),
       ),
     ]);
+  }
+
+  Future<void> _loadJumpFrames() async {
+    if (_jumpFramesReady) return;
+    try {
+      final frames = await Future.wait(
+        _jumpAssets.map((path) async {
+          if (game.images.containsKey(path)) {
+            return game.images.fromCache(path);
+          }
+          return game.images.load(path);
+        }),
+      );
+      _jumpAnimation = SpriteAnimation.spriteList(
+        frames.map(Sprite.new).toList(),
+        stepTime: 1 / 14,
+        loop: false,
+      );
+      _jumpFramesReady = true;
+    } catch (_) {
+      // Idle-only fallback — gameplay still works.
+    }
   }
 
   void initPosition(Vector2 gameSize) {
@@ -152,7 +161,7 @@ class Player extends PositionComponent
       position.y = size.y / 2;
     }
 
-    if (position.y > screenH + 80) {
+    if (position.y > screenH + GameConfig.fallOutBelowWorld) {
       onCrashed?.call(null);
       return;
     }
@@ -181,10 +190,13 @@ class Player extends PositionComponent
     if (_velocityY > 0) _velocityY = 0;
     _velocityY = GameConfig.jumpImpulse;
 
-    if (!_isJumpAnimating) {
-      _visual.animation = _jumpAnimation;
+    final jumpAnim = _jumpAnimation;
+    if (jumpAnim != null && !_isJumpAnimating) {
+      _visual.animation = jumpAnim;
       _visual.animationTicker?.reset();
       _isJumpAnimating = true;
+    } else if (!_jumpFramesReady) {
+      unawaited(_loadJumpFrames());
     }
   }
 
