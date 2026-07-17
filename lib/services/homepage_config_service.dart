@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -21,12 +23,72 @@ class HomepageConfigService {
   static DocumentReference<Map<String, dynamic>> get _winnerDoc =>
       _meta.doc(winnerDocId);
 
+  /// Wait until [Firebase.initializeApp] finishes (ScoreService.init is deferred
+  /// on web). Without this, the promo panel would subscribe once while apps is
+  /// empty and never receive Firestore updates.
+  static Future<bool> waitForFirebase({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    if (Firebase.apps.isNotEmpty) return true;
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      if (Firebase.apps.isNotEmpty) return true;
+    }
+    return Firebase.apps.isNotEmpty;
+  }
+
   /// Live offer config (`homepage_config`).
   static Stream<HomepageConfig?> offerStream() {
-    try {
-      if (Firebase.apps.isEmpty) {
+    return Stream.fromFuture(waitForFirebase()).asyncExpand((ready) {
+      if (!ready) return Stream<HomepageConfig?>.value(null);
+      try {
+        return _offerDoc.snapshots().map((snap) {
+          if (!snap.exists || snap.data() == null) return null;
+          return HomepageConfig.fromMap(snap.data()!);
+        });
+      } catch (_) {
         return Stream<HomepageConfig?>.value(null);
       }
+    });
+  }
+
+  /// Live confirmed winner (`confirmed_winner`).
+  static Stream<ConfirmedWinner?> confirmedWinnerStream() {
+    return Stream.fromFuture(waitForFirebase()).asyncExpand((ready) {
+      if (!ready) return Stream<ConfirmedWinner?>.value(null);
+      try {
+        return _winnerDoc.snapshots().map((snap) {
+          if (!snap.exists || snap.data() == null) return null;
+          return ConfirmedWinner.fromMap(snap.data()!);
+        });
+      } catch (_) {
+        return Stream<ConfirmedWinner?>.value(null);
+      }
+    });
+  }
+
+  /// Combined stream for the promo panel (offer + winner).
+  static Stream<({HomepageConfig? offer, ConfirmedWinner? winner})> stream() {
+    return Stream.fromFuture(waitForFirebase()).asyncExpand((ready) {
+      if (!ready) {
+        return Stream.value((offer: null, winner: null));
+      }
+      try {
+        return _combineLatest2(
+          offerStreamAfterReady(),
+          winnerStreamAfterReady(),
+          (HomepageConfig? o, ConfirmedWinner? w) => (offer: o, winner: w),
+        );
+      } catch (_) {
+        return Stream.value((offer: null, winner: null));
+      }
+    });
+  }
+
+  /// Internal: Firebase already confirmed ready (avoid nested wait).
+  static Stream<HomepageConfig?> offerStreamAfterReady() {
+    try {
       return _offerDoc.snapshots().map((snap) {
         if (!snap.exists || snap.data() == null) return null;
         return HomepageConfig.fromMap(snap.data()!);
@@ -36,34 +98,14 @@ class HomepageConfigService {
     }
   }
 
-  /// Live confirmed winner (`confirmed_winner`).
-  static Stream<ConfirmedWinner?> confirmedWinnerStream() {
+  static Stream<ConfirmedWinner?> winnerStreamAfterReady() {
     try {
-      if (Firebase.apps.isEmpty) {
-        return Stream<ConfirmedWinner?>.value(null);
-      }
       return _winnerDoc.snapshots().map((snap) {
         if (!snap.exists || snap.data() == null) return null;
         return ConfirmedWinner.fromMap(snap.data()!);
       });
     } catch (_) {
       return Stream<ConfirmedWinner?>.value(null);
-    }
-  }
-
-  /// Combined stream for the promo panel (offer + winner).
-  static Stream<({HomepageConfig? offer, ConfirmedWinner? winner})> stream() {
-    try {
-      if (Firebase.apps.isEmpty) {
-        return Stream.value((offer: null, winner: null));
-      }
-      return _combineLatest2(
-        offerStream(),
-        confirmedWinnerStream(),
-        (HomepageConfig? o, ConfirmedWinner? w) => (offer: o, winner: w),
-      );
-    } catch (_) {
-      return Stream.value((offer: null, winner: null));
     }
   }
 

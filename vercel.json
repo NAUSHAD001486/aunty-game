@@ -2,7 +2,7 @@
   "buildCommand": "bash scripts/build-web.sh",
   "outputDirectory": "build/web",
   "framework": null,
-  "installCommand": "flutter pub get",
+  "installCommand": "echo 'Flutter deps install inside scripts/build-web.sh'",
   "github": {
     "enabled": true,
     "silent": false

@@ -110,19 +110,25 @@ class ScoreService {
     }
   }
 
-  /// Web plugins can race on first paint — retry once on channel-error.
+  /// Web plugins can race on first paint — retry a few times on channel-error.
   Future<void> _initializeFirebaseWithRetry(FirebaseOptions options) async {
-    try {
-      await Firebase.initializeApp(options: options)
-          .timeout(const Duration(seconds: 10));
-      return;
-    } catch (e) {
-      debugPrint('[ScoreService] initializeApp first attempt failed: $e');
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (Firebase.apps.isNotEmpty) return;
-      await Firebase.initializeApp(options: options)
-          .timeout(const Duration(seconds: 10));
+    Object? lastError;
+    for (var attempt = 1; attempt <= 4; attempt++) {
+      try {
+        if (Firebase.apps.isNotEmpty) return;
+        await Firebase.initializeApp(options: options)
+            .timeout(const Duration(seconds: 12));
+        return;
+      } catch (e) {
+        lastError = e;
+        debugPrint(
+          '[ScoreService] initializeApp attempt $attempt failed: $e',
+        );
+        await Future<void>.delayed(Duration(milliseconds: 250 * attempt));
+      }
     }
+    if (Firebase.apps.isNotEmpty) return;
+    throw lastError ?? StateError('Firebase.initializeApp failed');
   }
 
   /// Persist anonymous Auth across reloads (web IndexedDB / localStorage).

@@ -378,8 +378,39 @@
     </section>
   </div>
 
-  <!-- Firebase JS is loaded automatically by FlutterFire (firebase_core_web). -->
-
-  <script src="flutter_bootstrap.js" async></script>
+  <!--
+    Firebase JS SDK 12.15.0 — matches firebase_core_web (supportedFirebaseJsSdkVersion).
+    Modular modules are assigned to window.firebase_* so FlutterFire can use them
+    without re-injecting, then Flutter bootstrap starts.
+  -->
+  <script>
+    // Pin the SDK version FlutterFire expects (firebase_core_web 3.9.1 → 12.15.0).
+    window.flutterfire_web_sdk_version = '12.15.0';
+  </script>
+  <script type="module">
+    (async function () {
+      var version = window.flutterfire_web_sdk_version || '12.15.0';
+      var base = 'https://www.gstatic.com/firebasejs/' + version + '/';
+      try {
+        var modules = await Promise.all([
+          import(base + 'firebase-app.js'),
+          import(base + 'firebase-auth.js'),
+          import(base + 'firebase-firestore-pipelines.js')
+        ]);
+        window.firebase_core = modules[0];
+        window.firebase_auth = modules[1];
+        window.firebase_firestore = modules[2];
+        // Tell FlutterFire not to re-inject the same services.
+        window.flutterfire_ignore_scripts = ['core', 'auth', 'firestore'];
+        console.log('[Aunty] Firebase JS modules ready (' + version + ')');
+      } catch (e) {
+        console.warn('[Aunty] Firebase JS preload failed — FlutterFire will inject:', e);
+      }
+      var s = document.createElement('script');
+      s.src = 'flutter_bootstrap.js';
+      s.async = true;
+      document.body.appendChild(s);
+    })();
+  </script>
 </body>
 </html>
