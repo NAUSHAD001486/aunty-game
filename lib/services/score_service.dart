@@ -48,6 +48,15 @@ class ScoreService {
   /// True only for the confirmed 12h tournament winner who has not claimed yet.
   final ValueNotifier<bool> canClaimPrizeNotifier = ValueNotifier<bool>(false);
 
+  /// Live inputs behind [canClaimPrizeNotifier]. Kept in sync by snapshot
+  /// listeners so an admin deleting the claim doc re-enables the CTA instantly.
+  bool _isConfirmedWinner = false;
+  bool _hasClaimed = false;
+  bool _claimWatchStarted = false;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _confirmedWinnerSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _claimSub;
+
   FirebaseAuth get _auth => FirebaseAuth.instance;
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
@@ -155,7 +164,7 @@ class ScoreService {
         // Keep cached HUD value; never force 0 on a soft failure.
         myTotalNotifier.value ??= readCachedTotalScore();
       }
-      unawaited(refreshClaimEligibility());
+      unawaited(startClaimEligibilityWatch());
       if (kDebugMode) {
         debugPrint(
           '[ScoreService] ready playerId=$_playerId authUid=$uid '
@@ -591,8 +600,69 @@ class ScoreService {
   DocumentReference<Map<String, dynamic>> _claimRef(String authUid) =>
       _db.collection(claimsCollection).doc(authUid);
 
-  /// Recompute whether this anonymous user may claim the prize.
+  String? _confirmedUidFrom(Map<String, dynamic>? data) {
+    if (data == null) return '';
+    return (data['authUid'] as String?)?.trim() ??
+        (data['uid'] as String?)?.trim() ??
+        (data['winner_uid'] as String?)?.trim() ??
+        '';
+  }
+
+  void _recomputeClaimEligibility() {
+    // Winner AND has not yet submitted a claim for the current cycle.
+    canClaimPrizeNotifier.value = _isConfirmedWinner && !_hasClaimed;
+  }
+
+  /// Start real-time listeners so the CTA reacts instantly to:
+  ///  • admin confirming a new winner (`game_metadata/confirmed_winner`)
+  ///  • the winner submitting their claim (`winners_claims/{uid}`)
+  ///  • admin DELETING the claim doc → CTA re-appears so they can resubmit.
+  Future<void> startClaimEligibilityWatch() async {
+    if (_claimWatchStarted) return;
+    try {
+      if (!_ready) {
+        final ok = await init();
+        if (!ok) return;
+      }
+      final user = await ensureSignedIn();
+      final authUid = user.uid;
+      _claimWatchStarted = true;
+
+      await _confirmedWinnerSub?.cancel();
+      await _claimSub?.cancel();
+
+      _confirmedWinnerSub = _db
+          .collection('game_metadata')
+          .doc('confirmed_winner')
+          .snapshots()
+          .listen(
+        (snap) {
+          final confirmedUid = _confirmedUidFrom(snap.data()) ?? '';
+          _isConfirmedWinner =
+              confirmedUid.isNotEmpty && confirmedUid == authUid;
+          _recomputeClaimEligibility();
+        },
+        onError: (Object e) =>
+            debugPrint('[ScoreService] confirmed_winner watch error: $e'),
+      );
+
+      _claimSub = _claimRef(authUid).snapshots().listen(
+        (snap) {
+          // Doc deleted by admin → hasClaimed=false → CTA returns for a resubmit.
+          _hasClaimed = snap.exists;
+          _recomputeClaimEligibility();
+        },
+        onError: (Object e) =>
+            debugPrint('[ScoreService] claim watch error: $e'),
+      );
+    } catch (e) {
+      debugPrint('[ScoreService] startClaimEligibilityWatch failed: $e');
+    }
+  }
+
+  /// One-shot recompute (used right after a run submit). Safe if watch is live.
   Future<void> refreshClaimEligibility() async {
+    if (_claimWatchStarted) return; // listeners already keep this fresh.
     try {
       if (!_ready) {
         final ok = await init();
@@ -604,29 +674,17 @@ class ScoreService {
       final user = await ensureSignedIn();
       final authUid = user.uid;
 
-      // Already claimed → never show again.
       final claimSnap = await _claimRef(authUid).get();
-      if (claimSnap.exists) {
-        canClaimPrizeNotifier.value = false;
-        return;
-      }
+      _hasClaimed = claimSnap.exists;
 
       final confirmed = await _db
           .collection('game_metadata')
           .doc('confirmed_winner')
           .get();
-      final confirmedUid = (confirmed.data()?['authUid'] as String?)?.trim() ??
-          (confirmed.data()?['uid'] as String?)?.trim() ??
-          (confirmed.data()?['winner_uid'] as String?)?.trim() ??
-          '';
+      final confirmedUid = _confirmedUidFrom(confirmed.data()) ?? '';
+      _isConfirmedWinner = confirmedUid.isNotEmpty && confirmedUid == authUid;
 
-      if (confirmedUid.isNotEmpty && confirmedUid == authUid) {
-        canClaimPrizeNotifier.value = true;
-        return;
-      }
-
-      // Not the confirmed winner — keep CTA hidden for everyone else.
-      canClaimPrizeNotifier.value = false;
+      _recomputeClaimEligibility();
     } catch (e) {
       debugPrint('[ScoreService] refreshClaimEligibility failed: $e');
       canClaimPrizeNotifier.value = false;
@@ -656,13 +714,16 @@ class ScoreService {
 
       final existing = await ref.get();
       if (existing.exists) {
-        canClaimPrizeNotifier.value = false;
+        _hasClaimed = true;
+        _recomputeClaimEligibility();
         return false;
       }
 
       // Soft gate: must still look like the winner before write.
-      await refreshClaimEligibility();
-      if (!canClaimPrizeNotifier.value) return false;
+      if (!_claimWatchStarted) {
+        await refreshClaimEligibility();
+      }
+      if (!_isConfirmedWinner) return false;
 
       final cycleId = currentTournamentCycleId();
       await ref.set({
@@ -677,7 +738,8 @@ class ScoreService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      canClaimPrizeNotifier.value = false;
+      _hasClaimed = true;
+      _recomputeClaimEligibility();
       if (kDebugMode) {
         debugPrint('[ScoreService] winner claim saved uid=$authUid');
       }
