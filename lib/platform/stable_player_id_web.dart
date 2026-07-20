@@ -83,3 +83,27 @@ void writeCachedTotalScore(int total) {
     web.window.localStorage.setItem(_totalKey, raw);
   } catch (_) {}
 }
+
+/// Boolean flags in localStorage (celebration seen, etc.).
+bool? readLocalFlag(String key) {
+  final k = key.trim();
+  if (k.isEmpty) return null;
+  try {
+    final v = web.window.localStorage.getItem(k);
+    if (v == null) return null;
+    final t = v.trim().toLowerCase();
+    if (t == '1' || t == 'true') return true;
+    if (t == '0' || t == 'false') return false;
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+void writeLocalFlag(String key, bool value) {
+  final k = key.trim();
+  if (k.isEmpty) return;
+  try {
+    web.window.localStorage.setItem(k, value ? '1' : '0');
+  } catch (_) {}
+}

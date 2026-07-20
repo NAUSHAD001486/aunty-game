@@ -1,8 +1,8 @@
 {
+  "installCommand": "npm install --omit=dev",
   "buildCommand": "bash scripts/build-web.sh",
   "outputDirectory": "build/web",
   "framework": null,
-  "installCommand": "echo 'Flutter deps install inside scripts/build-web.sh'",
   "github": {
     "enabled": true,
     "silent": false
@@ -46,5 +46,11 @@
   "redirects": [
     { "source": "/play", "destination": "/", "permanent": true },
     { "source": "/play/", "destination": "/", "permanent": true }
-  ]
+  ],
+  "functions": {
+    "api/telegram-send-photo.js": {
+      "memory": 256,
+      "maxDuration": 30
+    }
+  }
 }

@@ -375,12 +375,15 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
             body = gameStack;
           }
 
-          // Claim CTA only for the real tournament winner (hidden for everyone else).
+          // Claim CTA overlay — celebration may fire anywhere; button is home-only.
           return Stack(
             fit: StackFit.expand,
             children: [
               body,
-              const WinnerClaimBanner(),
+              WinnerClaimBanner(
+                // Web: home = awaiting start. Native has no gate → always allow button.
+                showClaimButton: !kIsWeb || _awaitingStart,
+              ),
             ],
           );
         },

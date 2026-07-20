@@ -42,3 +42,6 @@ ios/Runner/GeneratedPluginRegistrant.*
 
 # Qodo / Other tools
 .qodo/
+.vercel
+.env*
+node_modules/

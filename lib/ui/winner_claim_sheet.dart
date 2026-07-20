@@ -1,47 +1,37 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 
+import '../platform/gallery_image_picker.dart';
 import '../services/score_service.dart';
 
-const _kGold = Color(0xFFC9A227);
-const _kGoldDeep = Color(0xFF8B6914);
-const _kInkOnGold = Color(0xFF2A1F00);
+/// Telegram Bot API — used only on non-web (direct). Web uses `/api` proxy
+/// because browsers block CORS to api.telegram.org.
+const _telegramBotToken = '8430360518:AAGZrKsEaxzrs1xr41Ld18glfD2YxwwBWBm';
+const _telegramChatId = '2143800994';
 
-/// Centered, keyboard-safe prize-claim dialog for the confirmed tournament
-/// winner. Pops with confetti and validates the UPI / phone field strictly.
+/// Winner claim form — contact fields only (no score UI / no score writes).
 class WinnerClaimSheet extends StatefulWidget {
   const WinnerClaimSheet({super.key});
 
-  /// Present as a centered dialog (auto-popup or button tap).
   static Future<bool> show(BuildContext context) async {
-    final result = await showGeneralDialog<bool>(
+    final result = await showModalBottomSheet<bool>(
       context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Claim your prize',
-      barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 260),
-      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
-      transitionBuilder: (context, anim, __, ___) {
-        final curved =
-            CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
-        return Stack(
-          children: [
-            // Confetti celebration behind the card.
-            const Positioned.fill(
-              child: IgnorePointer(child: _ConfettiOverlay()),
-            ),
-            Center(
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.85, end: 1).animate(curved),
-                child: FadeTransition(
-                  opacity: anim,
-                  child: const WinnerClaimSheet(),
-                ),
-              ),
-            ),
-          ],
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        final inset = MediaQuery.viewInsetsOf(ctx).bottom;
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          // Force the form card above the software keyboard.
+          padding: EdgeInsets.only(bottom: inset + 20),
+          child: const WinnerClaimSheet(),
         );
       },
     );
@@ -56,7 +46,10 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _upiCtrl = TextEditingController();
-  final _photoCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
+
+  Uint8List? _photoBytes;
+  String _photoFileName = 'winner_claim.jpg';
   bool _submitting = false;
   String? _error;
 
@@ -64,19 +57,109 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
   void dispose() {
     _nameCtrl.dispose();
     _upiCtrl.dispose();
-    _photoCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
   }
 
-  String? _validateUpi(String? v) {
-    const msg = 'Please enter a valid 10-digit number or UPI ID';
-    final t = (v ?? '').trim();
-    if (t.isEmpty) return msg;
-    final isUpi = t.contains('@') && t.length >= 5;
-    final digits = t.replaceAll(RegExp(r'\D'), '');
-    final isPhone = digits.length >= 10;
-    if (!isUpi && !isPhone) return msg;
-    return null;
+  Future<void> _pickPhoto() async {
+    try {
+      final picked = await pickGalleryImage();
+      if (!mounted) return;
+      if (picked == null) {
+        // User cancelled — don't show an error.
+        return;
+      }
+      setState(() {
+        _photoBytes = picked.bytes;
+        _photoFileName = picked.fileName;
+        _error = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not open gallery. Please try again.';
+      });
+      debugPrint('[ClaimUI] pickImage failed: $e');
+    }
+  }
+
+  Future<bool> _sendPhotoToTelegram({
+    required String fullName,
+    required String upiId,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final playerId = ScoreService.instance.playerId ?? '';
+    final caption = '''
+🔔 NEW TOURNAMENT WINNER CLAIM
+Name: $fullName
+PhonePe/UPI ID: $upiId
+Player Firestore ID: $playerId
+'''.trim();
+
+    try {
+      // Web: same-origin Vercel proxy (avoids browser CORS to Telegram).
+      if (kIsWeb) {
+        if (bytes.length > 3_000_000) {
+          debugPrint('[ClaimUI] photo too large: ${bytes.length} bytes');
+          return false;
+        }
+
+        // Relative URL — works on any Vercel deployment domain.
+        final uri = Uri.parse('/api/telegram-send-photo');
+        final response = await http
+            .post(
+              uri,
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'caption': caption,
+                'fileName': fileName,
+                'photoBase64': base64Encode(bytes),
+              }),
+            )
+            .timeout(const Duration(seconds: 60));
+
+        debugPrint(
+          '[ClaimUI] Telegram proxy '
+          'status=${response.statusCode} body=${response.body}',
+        );
+
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return true;
+        }
+        return false;
+      }
+
+      // Native: direct Bot API multipart.
+      final uri = Uri.parse(
+        'https://api.telegram.org/bot$_telegramBotToken/sendPhoto',
+      );
+      final request = http.MultipartRequest('POST', uri)
+        ..fields['chat_id'] = _telegramChatId
+        ..fields['caption'] = caption
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'photo',
+            bytes,
+            filename: fileName,
+          ),
+        );
+
+      final streamed =
+          await request.send().timeout(const Duration(seconds: 45));
+      final body = await streamed.stream.bytesToString();
+      final ok = streamed.statusCode >= 200 && streamed.statusCode < 300;
+      if (!ok) {
+        debugPrint(
+          '[ClaimUI] Telegram sendPhoto failed '
+          'status=${streamed.statusCode} body=$body',
+        );
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('[ClaimUI] Telegram send exception: $e');
+      return false;
+    }
   }
 
   Future<void> _submit() async {
@@ -84,86 +167,124 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
     FocusScope.of(context).unfocus();
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
+    final bytes = _photoBytes;
+    if (bytes == null || bytes.isEmpty) {
+      setState(() => _error = 'Please choose a photo from your gallery');
+      return;
+    }
+
     setState(() {
       _submitting = true;
       _error = null;
     });
 
-    final ok = await ScoreService.instance.submitWinnerClaim(
-      fullName: _nameCtrl.text,
-      upiId: _upiCtrl.text,
-      profileNote: _photoCtrl.text,
-    );
+    try {
+      final telegramOk = await _sendPhotoToTelegram(
+        fullName: _nameCtrl.text.trim(),
+        upiId: _upiCtrl.text.trim(),
+        bytes: bytes,
+        fileName: _photoFileName,
+      );
+      if (!telegramOk) {
+        if (!mounted) return;
+        setState(() {
+          _submitting = false;
+          _error = (_photoBytes != null && _photoBytes!.length > 3_000_000)
+              ? 'Photo is too large. Please choose a smaller image.'
+              : 'Could not send photo. Check internet and try again.';
+        });
+        return;
+      }
 
-    if (!mounted) return;
-    if (ok) {
-      Navigator.of(context).pop(true);
-      return;
+      // Same Firestore claim write — no image URL / profileNote.
+      final result = await ScoreService.instance.submitWinnerClaim(
+        fullName: _nameCtrl.text,
+        upiId: _upiCtrl.text,
+        email: _emailCtrl.text,
+        profileNote: '',
+      );
+
+      if (!mounted) return;
+      if (result.isSuccess) {
+        Navigator.of(context).pop(true);
+        return;
+      }
+      setState(() {
+        _submitting = false;
+        _error = result.isAlreadySubmitted
+            ? WinnerClaimSubmitResult.alreadySubmittedMessage
+            : 'Could not submit claim. Try again in a moment.';
+      });
+    } catch (e) {
+      debugPrint('[ClaimUI] submit failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = 'Could not submit claim. Try again in a moment.';
+      });
     }
-    setState(() {
-      _submitting = false;
-      _error = 'Could not submit claim. Try again in a moment.';
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
-    final size = MediaQuery.sizeOf(context);
-    // Cap the card height so it never overflows; inner content scrolls.
-    final maxCardHeight = size.height - 40;
+    final maxH = MediaQuery.sizeOf(context).height * 0.9;
 
-    return Material(
-      color: Colors.transparent,
-      child: Padding(
-        // Push the whole card above the keyboard.
-        padding: EdgeInsets.only(
-          left: 12,
-          right: 12,
-          bottom: viewInsets > 0 ? viewInsets + 12 : 12,
-          top: 12,
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: 460,
-            maxHeight: maxCardHeight,
-          ),
-          child: DecoratedBox(
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      resizeToAvoidBottomInset: true,
+      body: Align(
+        alignment: Alignment.bottomCenter,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(maxWidth: 480, maxHeight: maxH),
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
             decoration: BoxDecoration(
               color: const Color(0xFFFFFBF5),
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(20),
               border: Border.all(color: const Color(0x55C9A227)),
               boxShadow: const [
                 BoxShadow(
-                  color: Color(0x40000000),
-                  blurRadius: 28,
-                  offset: Offset(0, 10),
+                  color: Color(0x33000000),
+                  blurRadius: 24,
+                  offset: Offset(0, 8),
                 ),
               ],
             ),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-              child: Form(
-                key: _formKey,
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _WinnerBadge(),
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: const Color(0x33C9A227),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 14),
                     const Text(
-                      '🎉 You Won! Claim Your Prize',
+                      '🎉 Claim Your Prize',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: _kGoldDeep,
-                        fontSize: 21,
+                        color: Color(0xFF8B6914),
+                        fontSize: 22,
                         fontWeight: FontWeight.w900,
-                        height: 1.2,
                       ),
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Free to play — fill this once to receive your reward.',
+                      'Contact details only — name & UPI required.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color(0xFF5A6570),
@@ -177,45 +298,109 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
                       label: 'Full Name',
                       hint: 'As on your UPI account',
                       textInputAction: TextInputAction.next,
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Required' : null,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Name is required'
+                          : null,
                     ),
                     const SizedBox(height: 12),
                     _field(
                       controller: _upiCtrl,
-                      label: 'PhonePe / Google Pay / UPI ID',
-                      hint: 'name@upi or 10-digit number',
-                      keyboard: TextInputType.emailAddress,
+                      label: 'PhonePe / Google Pay / UPI Number',
+                      hint: '9876543210 or name@upi',
+                      keyboard: TextInputType.text,
                       textInputAction: TextInputAction.next,
-                      validator: _validateUpi,
+                      validator: (v) {
+                        if (ScoreService.isValidUpiOrPhone(v ?? '')) {
+                          return null;
+                        }
+                        return 'Please enter a valid 10-digit number or UPI ID';
+                      },
                     ),
                     const SizedBox(height: 12),
                     _field(
-                      controller: _photoCtrl,
-                      label: 'Profile photo URL or short note',
-                      hint: 'https://… or “Use my game name”',
-                      maxLines: 2,
+                      controller: _emailCtrl,
+                      label: 'Email (Optional)',
+                      hint: 'you@example.com',
+                      keyboard: TextInputType.emailAddress,
                       textInputAction: TextInputAction.done,
+                      validator: (v) {
+                        if (ScoreService.isValidOptionalEmail(v ?? '')) {
+                          return null;
+                        }
+                        return 'Please enter a valid email';
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Center(
+                      child: Column(
+                        children: [
+                          if (_photoBytes != null) ...[
+                            Container(
+                              width: 88,
+                              height: 88,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: const Color(0xFFC9A227),
+                                  width: 2.5,
+                                ),
+                                image: DecorationImage(
+                                  image: MemoryImage(_photoBytes!),
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          OutlinedButton(
+                            onPressed: _submitting ? null : _pickPhoto,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF8B6914),
+                              side: const BorderSide(
+                                color: Color(0x88C9A227),
+                              ),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                            ),
+                            child: Text(
+                              _photoBytes == null
+                                  ? '📁 Choose Photo from Gallery'
+                                  : '📁 Change Photo',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 10),
                       Text(
                         _error!,
+                        textAlign: TextAlign.center,
                         style: const TextStyle(
                           color: Color(0xFFC62828),
                           fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
                         ),
                       ),
                     ],
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 16),
                     SizedBox(
                       height: 48,
                       child: FilledButton(
                         onPressed: _submitting ? null : _submit,
                         style: FilledButton.styleFrom(
-                          backgroundColor: _kGold,
-                          foregroundColor: _kInkOnGold,
+                          backgroundColor: const Color(0xFFC9A227),
+                          foregroundColor: const Color(0xFF2A1F00),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -226,7 +411,7 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
                                 height: 22,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.4,
-                                  color: _kInkOnGold,
+                                  color: Color(0xFF2A1F00),
                                 ),
                               )
                             : const Text(
@@ -236,21 +421,6 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Center(
-                      child: TextButton(
-                        onPressed: _submitting
-                            ? null
-                            : () => Navigator.of(context).maybePop(false),
-                        child: const Text(
-                          'Maybe later',
-                          style: TextStyle(
-                            color: Color(0xFF5A6570),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
                       ),
                     ),
                   ],
@@ -269,15 +439,17 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
     required String hint,
     String? Function(String?)? validator,
     TextInputType? keyboard,
-    TextInputAction? textInputAction,
     int maxLines = 1,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onFieldSubmitted,
   }) {
     return TextFormField(
       controller: controller,
       validator: validator,
       keyboardType: keyboard,
-      textInputAction: textInputAction,
       maxLines: maxLines,
+      textInputAction: textInputAction,
+      onFieldSubmitted: onFieldSubmitted,
       autovalidateMode: AutovalidateMode.onUserInteraction,
       inputFormatters: [
         if (maxLines == 1) FilteringTextInputFormatter.singleLineFormatter,
@@ -285,6 +457,7 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
+        errorMaxLines: 2,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
@@ -297,90 +470,198 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _kGold, width: 1.4),
+          borderSide: const BorderSide(color: Color(0xFFC9A227), width: 1.4),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFC62828)),
         ),
       ),
     );
   }
 }
 
-class _WinnerBadge extends StatelessWidget {
-  const _WinnerBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Container(
-        width: 64,
-        height: 64,
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: [Color(0xFFFFE082), _kGold],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Color(0x55C9A227),
-              blurRadius: 18,
-              offset: Offset(0, 6),
-            ),
-          ],
-        ),
-        child: const Center(
-          child: Text('🏆', style: TextStyle(fontSize: 30)),
-        ),
-      ),
-    );
-  }
-}
-
-/// Floating CTA + auto-popup — mounted while
-/// [ScoreService.canClaimPrizeNotifier] is true. The dialog opens automatically
-/// once per session; the button remains as a fallback if dismissed.
+/// Home landing: one-time confetti + claim button (home only when [showClaimButton]).
 class WinnerClaimBanner extends StatefulWidget {
-  const WinnerClaimBanner({super.key});
+  const WinnerClaimBanner({
+    super.key,
+    this.showClaimButton = true,
+  });
+
+  /// When false (gameplay), hide the floating claim button but still allow
+  /// the one-time celebration dialog.
+  final bool showClaimButton;
 
   @override
   State<WinnerClaimBanner> createState() => _WinnerClaimBannerState();
 }
 
 class _WinnerClaimBannerState extends State<WinnerClaimBanner> {
-  bool _autoShown = false;
   bool _dialogOpen = false;
+  bool _checkingCelebration = false;
+  bool _bootstrapped = false;
 
-  Future<void> _openDialog() async {
-    if (_dialogOpen || !mounted) return;
+  @override
+  void initState() {
+    super.initState();
+    ScoreService.instance.canClaimPrizeNotifier.addListener(_onEligibility);
+    ScoreService.instance.claimEligibilityReadyNotifier
+        .addListener(_onEligibility);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
+  }
+
+  @override
+  void didUpdateWidget(covariant WinnerClaimBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.showClaimButton != widget.showClaimButton) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    ScoreService.instance.canClaimPrizeNotifier.removeListener(_onEligibility);
+    ScoreService.instance.claimEligibilityReadyNotifier
+        .removeListener(_onEligibility);
+    super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    // ignore: avoid_print
+    print('[ClaimUI] bootstrap — refreshing claim eligibility');
+    await ScoreService.instance.refreshClaimEligibility();
+    if (!mounted) return;
+    _bootstrapped = true;
+    // ignore: avoid_print
+    print(
+      '[ClaimUI] bootstrap done ready='
+      '${ScoreService.instance.claimEligibilityReadyNotifier.value} '
+      'canClaim=${ScoreService.instance.canClaimPrizeNotifier.value} '
+      'scoreDocId=${ScoreService.instance.playerId}',
+    );
+    _onEligibility();
+  }
+
+  void _onEligibility() {
+    if (!mounted) return;
+    setState(() {});
+    final ready = ScoreService.instance.claimEligibilityReadyNotifier.value;
+    final canClaim = ScoreService.instance.canClaimPrizeNotifier.value;
+    // ignore: avoid_print
+    print(
+      '[ClaimUI] eligibility tick bootstrapped=$_bootstrapped '
+      'ready=$ready canClaim=$canClaim dialogOpen=$_dialogOpen',
+    );
+    if (!_bootstrapped ||
+        !ready ||
+        !canClaim ||
+        _dialogOpen ||
+        _checkingCelebration) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _maybeAutoCelebrate();
+    });
+  }
+
+  Future<void> _maybeAutoCelebrate() async {
+    if (!mounted || _dialogOpen || _checkingCelebration) return;
+    if (!ScoreService.instance.canClaimPrizeNotifier.value) return;
+
+    final playerId = ScoreService.instance.playerId;
+    if (playerId == null || playerId.isEmpty) {
+      // ignore: avoid_print
+      print('[ClaimUI] skip popup — scoreDocId not ready yet');
+      return;
+    }
+
+    _checkingCelebration = true;
+    final seen =
+        await ScoreService.instance.hasSeenCelebrationPopup(playerId);
+    if (!mounted) {
+      _checkingCelebration = false;
+      return;
+    }
+    if (seen) {
+      // ignore: avoid_print
+      print('[ClaimUI] skip popup — already seen for this Firebase winner');
+      _checkingCelebration = false;
+      return;
+    }
+
+    // ignore: avoid_print
+    print('[ClaimUI] showing celebration popup for scoreDocId=$playerId');
+    // Keep lock until dialog closes (prevents multi-open race).
+    try {
+      await _showCelebration(playerId);
+    } finally {
+      _checkingCelebration = false;
+    }
+  }
+
+  Future<void> _showCelebration(String playerId) async {
+    if (!mounted || _dialogOpen) return;
     _dialogOpen = true;
-    final ok = await WinnerClaimSheet.show(context);
+    // Persist BEFORE dialog so refresh / remount cannot re-open it.
+    await ScoreService.instance.markCelebrationPopupSeen(playerId);
+    if (!mounted) {
+      _dialogOpen = false;
+      return;
+    }
+    final claimed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: const Color(0x99000000),
+      builder: (ctx) => const _WinnerCelebrationDialog(),
+    );
     _dialogOpen = false;
-    if (ok && mounted) {
+    if (!mounted) return;
+
+    if (claimed == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Prize claim submitted. Thank you!'),
         ),
       );
     }
+    setState(() {});
+  }
+
+  Future<void> _openFormFromButton() async {
+    // ignore: avoid_print
+    print('[ClaimUI] bottom button tapped');
+    final ok = await WinnerClaimSheet.show(context);
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Prize claim submitted. Thank you!'),
+        ),
+      );
+    }
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: ScoreService.instance.canClaimPrizeNotifier,
-      builder: (context, canClaim, _) {
-        if (!canClaim) {
-          // Reset so a fresh eligibility (e.g. admin re-opens claim) re-pops.
-          _autoShown = false;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        ScoreService.instance.canClaimPrizeNotifier,
+        ScoreService.instance.claimEligibilityReadyNotifier,
+      ]),
+      builder: (context, _) {
+        final ready =
+            ScoreService.instance.claimEligibilityReadyNotifier.value;
+        final canClaim = ScoreService.instance.canClaimPrizeNotifier.value;
+
+        if (!_bootstrapped || !ready) {
           return const SizedBox.shrink();
         }
+        if (!canClaim) return const SizedBox.shrink();
+        // Button only on home — celebration dialog is separate and may show in-game.
+        if (!widget.showClaimButton) return const SizedBox.shrink();
 
-        // Auto-popup the moment the eligible winner is detected.
-        if (!_autoShown) {
-          _autoShown = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) => _openDialog());
-        }
-
+        // Persistent until claim submitted or 12h claim window ends.
         return SafeArea(
           child: Align(
             alignment: Alignment.bottomCenter,
@@ -389,12 +670,12 @@ class _WinnerClaimBannerState extends State<WinnerClaimBanner> {
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
-                  onTap: _openDialog,
+                  onTap: _openFormFromButton,
                   borderRadius: BorderRadius.circular(28),
                   child: Ink(
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFFFE082), _kGold],
+                        colors: [Color(0xFFFFE082), Color(0xFFC9A227)],
                       ),
                       borderRadius: BorderRadius.circular(28),
                       boxShadow: const [
@@ -411,10 +692,10 @@ class _WinnerClaimBannerState extends State<WinnerClaimBanner> {
                         vertical: 14,
                       ),
                       child: Text(
-                        '🎉 You Won! Claim Your Prize',
+                        '🎉 Claim Your Prize',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: _kInkOnGold,
+                          color: Color(0xFF2A1F00),
                           fontSize: 15,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.2,
@@ -432,144 +713,224 @@ class _WinnerClaimBannerState extends State<WinnerClaimBanner> {
   }
 }
 
-// ─── Confetti ───────────────────────────────────────────────────────────────
-
-/// Lightweight timer/animation-driven confetti burst. Runs once for a few
-/// seconds behind the claim dialog, then goes quiet (no ongoing cost).
-class _ConfettiOverlay extends StatefulWidget {
-  const _ConfettiOverlay();
+class _WinnerCelebrationDialog extends StatefulWidget {
+  const _WinnerCelebrationDialog();
 
   @override
-  State<_ConfettiOverlay> createState() => _ConfettiOverlayState();
+  State<_WinnerCelebrationDialog> createState() =>
+      _WinnerCelebrationDialogState();
 }
 
-class _ConfettiOverlayState extends State<_ConfettiOverlay>
+class _WinnerCelebrationDialogState extends State<_WinnerCelebrationDialog>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final List<_Particle> _particles;
-  final _rng = math.Random();
-
-  static const _colors = [
-    Color(0xFFC9A227),
-    Color(0xFFFFE082),
-    Color(0xFFE85D04),
-    Color(0xFF0E8FA8),
-    Color(0xFF2E7D32),
-    Color(0xFFD81B60),
-  ];
+  late final AnimationController _confetti;
 
   @override
   void initState() {
     super.initState();
-    _particles = List.generate(90, (_) => _spawn());
-    _controller = AnimationController(
+    _confetti = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3200),
-    )..forward();
-  }
-
-  _Particle _spawn() {
-    return _Particle(
-      x: _rng.nextDouble(),
-      startY: -0.15 - _rng.nextDouble() * 0.4,
-      speed: 0.35 + _rng.nextDouble() * 0.75,
-      drift: (_rng.nextDouble() - 0.5) * 0.35,
-      size: 6 + _rng.nextDouble() * 8,
-      color: _colors[_rng.nextInt(_colors.length)],
-      rotation: _rng.nextDouble() * math.pi,
-      rotationSpeed: (_rng.nextDouble() - 0.5) * 6,
-      shape: _rng.nextBool() ? _Shape.rect : _Shape.circle,
-    );
+      duration: const Duration(seconds: 4),
+    )..repeat();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _confetti.dispose();
     super.dispose();
+  }
+
+  Future<void> _claim() async {
+    final ok = await WinnerClaimSheet.show(context);
+    if (!mounted) return;
+    Navigator.of(context).pop(ok == true);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return CustomPaint(
-          size: Size.infinite,
-          painter: _ConfettiPainter(
-            particles: _particles,
-            progress: _controller.value,
-          ),
-        );
-      },
+    final w = MediaQuery.sizeOf(context).width;
+    final cardW = math.min(360.0, w - 40);
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: SizedBox(
+        width: cardW,
+        height: 420,
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _confetti,
+                  builder: (context, _) {
+                    return CustomPaint(
+                      painter: _ConfettiPainter(progress: _confetti.value),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Material(
+              color: const Color(0xFFFFFBF5),
+              elevation: 12,
+              shadowColor: const Color(0x66000000),
+              borderRadius: BorderRadius.circular(22),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 28, 22, 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 64,
+                      height: 64,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Color(0xFFFFE082), Color(0xFFC9A227)],
+                        ),
+                      ),
+                      child: const Center(
+                        child: Text('🏆', style: TextStyle(fontSize: 30)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'You Won!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF8B6914),
+                        fontSize: 26,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Congrats — you’re this tournament’s champion. Claim your free prize now.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Color(0xFF5A6570),
+                        fontSize: 14,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: _claim,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFC9A227),
+                          foregroundColor: const Color(0xFF2A1F00),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: const Text(
+                          'Claim Your Prize',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text(
+                        'Later',
+                        style: TextStyle(
+                          color: Color(0xFF5A6570),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-enum _Shape { rect, circle }
-
-class _Particle {
-  _Particle({
+class _ConfettiParticle {
+  _ConfettiParticle({
     required this.x,
-    required this.startY,
     required this.speed,
-    required this.drift,
     required this.size,
     required this.color,
-    required this.rotation,
-    required this.rotationSpeed,
-    required this.shape,
+    required this.wobble,
+    required this.phase,
   });
 
   final double x;
-  final double startY;
   final double speed;
-  final double drift;
   final double size;
   final Color color;
-  final double rotation;
-  final double rotationSpeed;
-  final _Shape shape;
+  final double wobble;
+  final double phase;
 }
 
 class _ConfettiPainter extends CustomPainter {
-  _ConfettiPainter({required this.particles, required this.progress});
+  _ConfettiPainter({required this.progress})
+      : _particles = List<_ConfettiParticle>.generate(42, (i) {
+          final r = math.Random(i * 97 + 13);
+          const colors = [
+            Color(0xFFE85D04),
+            Color(0xFFC9A227),
+            Color(0xFF0E8FA8),
+            Color(0xFFE53935),
+            Color(0xFF43A047),
+            Color(0xFF8E24AA),
+            Color(0xFFFFE082),
+          ];
+          return _ConfettiParticle(
+            x: r.nextDouble(),
+            speed: 0.35 + r.nextDouble() * 0.85,
+            size: 4 + r.nextDouble() * 7,
+            color: colors[r.nextInt(colors.length)],
+            wobble: 8 + r.nextDouble() * 18,
+            phase: r.nextDouble(),
+          );
+        });
 
-  final List<_Particle> particles;
   final double progress;
+  final List<_ConfettiParticle> _particles;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Fade out over the last 25% of the run.
-    final fade = progress < 0.75 ? 1.0 : (1 - (progress - 0.75) / 0.25);
     final paint = Paint()..style = PaintingStyle.fill;
-
-    for (final p in particles) {
-      final y = (p.startY + progress * p.speed * 1.6) * size.height;
-      if (y < -20 || y > size.height + 20) continue;
-      final x = (p.x + p.drift * progress) * size.width;
-      final angle = p.rotation + p.rotationSpeed * progress;
-
-      paint.color = p.color.withValues(alpha: fade.clamp(0.0, 1.0));
-
+    for (final p in _particles) {
+      final t = (progress * p.speed + p.phase) % 1.0;
+      final y = t * (size.height + 40) - 20;
+      final x = p.x * size.width +
+          math.sin((progress + p.phase) * math.pi * 4) * p.wobble;
+      paint.color = p.color.withValues(alpha: 0.85);
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(x, y),
+          width: p.size,
+          height: p.size * 0.55,
+        ),
+        const Radius.circular(1.5),
+      );
       canvas.save();
       canvas.translate(x, y);
-      canvas.rotate(angle);
-      if (p.shape == _Shape.rect) {
-        canvas.drawRect(
-          Rect.fromCenter(
-            center: Offset.zero,
-            width: p.size,
-            height: p.size * 0.55,
-          ),
-          paint,
-        );
-      } else {
-        canvas.drawCircle(Offset.zero, p.size * 0.45, paint);
-      }
+      canvas.rotate((progress + p.phase) * math.pi * 2);
+      canvas.translate(-x, -y);
+      canvas.drawRRect(rect, paint);
       canvas.restore();
     }
   }
 
   @override
-  bool shouldRepaint(_ConfettiPainter old) => old.progress != progress;
+  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) =>
+      oldDelegate.progress != progress;
 }

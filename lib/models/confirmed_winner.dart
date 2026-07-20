@@ -27,9 +27,9 @@ class ConfirmedWinner {
   factory ConfirmedWinner.fromMap(Map<String, dynamic> data) {
     return ConfirmedWinner(
       authUid: _firstString(data, const [
+        'uid',
         'authUid',
         'auth_uid',
-        'uid',
         'winner_uid',
       ]),
       playerId: _firstString(data, const [

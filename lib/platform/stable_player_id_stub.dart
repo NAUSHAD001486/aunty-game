@@ -6,3 +6,7 @@ void writeStablePlayerId(String id) {}
 int? readCachedTotalScore() => null;
 
 void writeCachedTotalScore(int total) {}
+
+bool? readLocalFlag(String key) => null;
+
+void writeLocalFlag(String key, bool value) {}

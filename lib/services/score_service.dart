@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
 import '../platform/stable_player_id.dart';
@@ -29,8 +30,13 @@ class ScoreService {
 
   static const String collectionName = 'users_scores';
   static const String claimsCollection = 'winners_claims';
-  static const int cycleDays = 30;
-  static const int tournamentHours = 12;
+  /// Full `users_scores` snapshots after each daily roll (kept ~2 days).
+  static const String scoreArchivesCollection = 'score_archives';
+  /// Claim form / button stays available this long after winner announce.
+  static const int claimWindowHours = 12;
+  static const int archiveRetentionDays = 2;
+  /// India Standard Time offset used for daily 8 PM score reset.
+  static const Duration _istOffset = Duration(hours: 5, minutes: 30);
 
   bool _ready = false;
   bool _persistenceConfigured = false;
@@ -48,14 +54,13 @@ class ScoreService {
   /// True only for the confirmed 12h tournament winner who has not claimed yet.
   final ValueNotifier<bool> canClaimPrizeNotifier = ValueNotifier<bool>(false);
 
-  /// Live inputs behind [canClaimPrizeNotifier]. Kept in sync by snapshot
-  /// listeners so an admin deleting the claim doc re-enables the CTA instantly.
-  bool _isConfirmedWinner = false;
-  bool _hasClaimed = false;
-  bool _claimWatchStarted = false;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
-      _confirmedWinnerSub;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _claimSub;
+  /// False until the first claim-eligibility evaluation finishes (Firebase + prefs).
+  /// UI must not treat `canClaimPrizeNotifier == false` as final while this is false.
+  final ValueNotifier<bool> claimEligibilityReadyNotifier =
+      ValueNotifier<bool>(false);
+
+  SharedPreferences? _prefs;
+  Future<SharedPreferences>? _prefsInFlight;
 
   FirebaseAuth get _auth => FirebaseAuth.instance;
   FirebaseFirestore get _db => FirebaseFirestore.instance;
@@ -103,13 +108,18 @@ class ScoreService {
         await _initializeFirebaseWithRetry(options);
       }
       await _configureWebAuthPersistence();
+      // Prefs are for claim celebration only — never block score uploads.
+      try {
+        await _ensurePrefs();
+      } catch (e) {
+        // ignore: avoid_print
+        print('[ScoreService] SharedPreferences warm skipped: $e');
+        _prefsInFlight = null;
+      }
       _ready = true;
       unawaited(_warmUserProfile());
-      if (kDebugMode) {
-        debugPrint(
-          '[ScoreService] Firebase ready (cachedTotal=$cached, auth warming…)',
-        );
-      }
+      // ignore: avoid_print
+      print('[ScoreService] Firebase ready — scores + claim can proceed');
       return true;
     } catch (e, st) {
       _ready = false;
@@ -164,7 +174,7 @@ class ScoreService {
         // Keep cached HUD value; never force 0 on a soft failure.
         myTotalNotifier.value ??= readCachedTotalScore();
       }
-      unawaited(startClaimEligibilityWatch());
+      unawaited(refreshClaimEligibility());
       if (kDebugMode) {
         debugPrint(
           '[ScoreService] ready playerId=$_playerId authUid=$uid '
@@ -364,7 +374,7 @@ class ScoreService {
     return display;
   }
 
-  /// Current cumulative total (30-day cycle aware, read-only).
+  /// Current cumulative total (12h tournament window aware, read-only).
   Future<int?> fetchMyTotalScore() async {
     if (!_ready) {
       final ok = await init();
@@ -387,8 +397,14 @@ class ScoreService {
         _publishTotal(0, allowDowngradeToZero: true);
         return 0;
       }
-      final total = _effectiveTotalFromData(snap.data()!);
-      // Doc exists → server is source of truth (incl. 30-day cycle reset to 0).
+      final data = snap.data()!;
+      // Lazy 12h roll: archive previous window, then show 0 until next run.
+      if (_needsTournamentRoll(data)) {
+        unawaited(_archiveAndResetStaleScore(user: user, playerId: id, data: data));
+        _publishTotal(0, allowDowngradeToZero: true);
+        return 0;
+      }
+      final total = _effectiveTotalFromData(data);
       _publishTotal(total, allowDowngradeToZero: true);
       return total;
     } catch (e) {
@@ -412,8 +428,11 @@ class ScoreService {
           'uid': playerId,
           'displayName': display,
           'totalScore': total,
-          'cycleStartDate': Timestamp.fromDate(now),
+          'tournamentScore': total,
+          'tournamentCycleId': currentTournamentCycleId(now),
+          'cycleStartDate': Timestamp.fromDate(currentTournamentWindowStart(now)),
           'updatedAt': FieldValue.serverTimestamp(),
+          'tournamentUpdatedAt': FieldValue.serverTimestamp(),
           'lastRunScore': 0,
         },
         SetOptions(merge: true),
@@ -430,24 +449,31 @@ class ScoreService {
   }
 
   int _effectiveTotalFromData(Map<String, dynamic> data) {
+    if (_needsTournamentRoll(data)) return 0;
+    return (data['totalScore'] as num?)?.toInt() ?? 0;
+  }
+
+  bool _needsTournamentRoll(Map<String, dynamic> data) {
+    final cycleId = currentTournamentCycleId();
+    final prev = data['tournamentCycleId']?.toString() ?? '';
+    if (prev.isNotEmpty) return prev != cycleId;
+    // Legacy docs without tournamentCycleId: roll if before current window start.
     final rawCycle = data['cycleStartDate'];
-    final now = DateTime.now().toUtc();
     DateTime? cycleStart;
     if (rawCycle is Timestamp) {
       cycleStart = rawCycle.toDate().toUtc();
     } else if (rawCycle is DateTime) {
       cycleStart = rawCycle.toUtc();
     }
-    if (cycleStart != null &&
-        now.difference(cycleStart).inDays >= cycleDays) {
-      return 0;
-    }
-    return (data['totalScore'] as num?)?.toInt() ?? 0;
+    if (cycleStart == null) return false;
+    return cycleStart.isBefore(currentTournamentWindowStart());
   }
 
   /// READ current `totalScore` → add [runScore] → WRITE sum (never overwrite
   /// with only the run score when a document already exists).
   Future<int?> submitRunScore(int runScore) async {
+    // ignore: avoid_print
+    print('[Score] submitRunScore called runScore=$runScore ready=$_ready');
     if (runScore < 0) return null;
 
     // Zero-point death: still surface the saved total; don't mint a blank row
@@ -463,25 +489,47 @@ class ScoreService {
 
     if (!_ready) {
       final ok = await init();
-      if (!ok) return null;
+      // ignore: avoid_print
+      print('[Score] init before submit → ok=$ok');
+      if (!ok) {
+        // ignore: avoid_print
+        print('[Score] ABORT — Firebase init failed, cannot upload score');
+        return myTotalNotifier.value ?? readCachedTotalScore();
+      }
     }
 
-    final user = await ensureSignedIn();
-    final id = _playerId ?? user.uid;
-    final ref = _playerRef(id);
-    final authUid = user.uid;
-
     try {
+      final user = await ensureSignedIn();
+      final id = _playerId ?? user.uid;
+      final ref = _playerRef(id);
+      final authUid = user.uid;
+      // ignore: avoid_print
+      print('[Score] signed in authUid=$authUid playerId=$id');
+
+      // If the daily 8 PM window rolled, archive old scores BEFORE accumulating.
+      final pre = await ref.get(const GetOptions(source: Source.serverAndCache));
+      if (pre.exists) {
+        final preData = pre.data()!;
+        if (_needsTournamentRoll(preData)) {
+          await _archivePlayerScoreSnapshot(
+            playerId: id,
+            data: preData,
+          );
+        }
+      }
+      unawaited(_purgeExpiredScoreArchives());
+
       final nextTotal = await _db.runTransaction<int>((tx) async {
         final snap = await tx.get(ref);
         final now = DateTime.now().toUtc();
+        final cycleId = currentTournamentCycleId(now);
+        final windowStart = currentTournamentWindowStart(now);
 
         String display = user.displayName?.trim().isNotEmpty == true
             ? user.displayName!.trim()
             : defaultDisplayNameFor(id);
 
         if (!snap.exists) {
-          // Brand-new player doc only — starting total is this run.
           final tFields = _tournamentFields(null, runScore, now);
           tx.set(ref, {
             'playerId': id,
@@ -489,7 +537,7 @@ class ScoreService {
             'uid': id,
             'displayName': display,
             'totalScore': runScore,
-            'cycleStartDate': Timestamp.fromDate(now),
+            'cycleStartDate': Timestamp.fromDate(windowStart),
             'updatedAt': FieldValue.serverTimestamp(),
             'lastRunScore': runScore,
             ...tFields,
@@ -502,52 +550,37 @@ class ScoreService {
             ? (data['displayName'] as String).trim()
             : display;
 
-        final rawCycle = data['cycleStartDate'];
-        DateTime cycleStart;
-        if (rawCycle is Timestamp) {
-          cycleStart = rawCycle.toDate().toUtc();
-        } else if (rawCycle is DateTime) {
-          cycleStart = rawCycle.toUtc();
-        } else {
-          cycleStart = now;
-        }
-
         var total = (data['totalScore'] as num?)?.toInt() ?? 0;
-        if (now.difference(cycleStart).inDays >= cycleDays) {
+        final prevCycle = data['tournamentCycleId']?.toString() ?? '';
+        if (prevCycle != cycleId) {
+          // New daily window — both competition scores start fresh.
           total = 0;
-          cycleStart = now;
         }
 
         final accumulated = total + runScore;
         final tFields = _tournamentFields(data, runScore, now);
-        tx.set(
-          ref,
-          {
-            'playerId': id,
-            'authUid': authUid,
-            'uid': id,
-            'displayName': display,
-            'totalScore': accumulated,
-            'cycleStartDate': Timestamp.fromDate(cycleStart),
-            'updatedAt': FieldValue.serverTimestamp(),
-            'lastRunScore': runScore,
-            ...tFields,
-          },
-          SetOptions(merge: true),
-        );
+        tx.set(ref, {
+          'playerId': id,
+          'authUid': authUid,
+          'uid': id,
+          'displayName': display,
+          'totalScore': accumulated,
+          'cycleStartDate': Timestamp.fromDate(windowStart),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'lastRunScore': runScore,
+          ...tFields,
+        });
         return accumulated;
       });
 
-      if (kDebugMode) {
-        debugPrint(
-          '[ScoreService] playerId=$id run=+$runScore → totalScore=$nextTotal',
-        );
-      }
+      // ignore: avoid_print
+      print('[Score] UPLOADED playerId=$id run=+$runScore → totalScore=$nextTotal');
       _publishTotal(nextTotal);
       unawaited(refreshClaimEligibility());
       return nextTotal;
     } catch (e, st) {
-      debugPrint('[ScoreService] submitRunScore failed: $e');
+      // ignore: avoid_print
+      print('[Score] submitRunScore FAILED: $e');
       debugPrint('$st');
       // Keep optimistic/local cache visible if the write failed.
       return myTotalNotifier.value ?? readCachedTotalScore();
@@ -555,7 +588,9 @@ class ScoreService {
   }
 
   Stream<List<LeaderboardEntry>> leaderboardStream({int limit = 50}) {
+    final cycleId = currentTournamentCycleId();
     return _users
+        .where('tournamentCycleId', isEqualTo: cycleId)
         .orderBy('totalScore', descending: true)
         .limit(limit)
         .snapshots()
@@ -567,14 +602,11 @@ class ScoreService {
     });
   }
 
-  // ─── 12-hour tournament + prize claim ─────────────────────────────────
+  // ─── Daily 8 PM IST tournament + prize claim ───────────────────────────
 
-  /// Stable id for the current 12-hour UTC window window.
+  /// Stable id for the current daily competition window (resets 8 PM IST).
   static String currentTournamentCycleId([DateTime? now]) {
-    final n = now ?? DateTime.now().toUtc();
-    final windowMs = tournamentHours * Duration.millisecondsPerHour;
-    final startMs = (n.millisecondsSinceEpoch ~/ windowMs) * windowMs;
-    return '$startMs';
+    return '${currentTournamentWindowStart(now).millisecondsSinceEpoch}';
   }
 
   Map<String, dynamic> _tournamentFields(
@@ -597,157 +629,604 @@ class ScoreService {
     };
   }
 
-  DocumentReference<Map<String, dynamic>> _claimRef(String authUid) =>
-      _db.collection(claimsCollection).doc(authUid);
-
-  String? _confirmedUidFrom(Map<String, dynamic>? data) {
-    if (data == null) return '';
-    return (data['authUid'] as String?)?.trim() ??
-        (data['uid'] as String?)?.trim() ??
-        (data['winner_uid'] as String?)?.trim() ??
-        '';
+  /// UTC instant of the last 8:00 PM Asia/Kolkata boundary.
+  /// Scores accumulate from that moment until the next 8 PM IST.
+  static DateTime currentTournamentWindowStart([DateTime? now]) {
+    final utc = (now ?? DateTime.now()).toUtc();
+    final ist = utc.add(_istOffset);
+    // 20:00 IST == 14:30 UTC same calendar day in IST.
+    var startUtc = DateTime.utc(ist.year, ist.month, ist.day, 14, 30);
+    if (utc.isBefore(startUtc)) {
+      startUtc = startUtc.subtract(const Duration(days: 1));
+    }
+    return startUtc;
   }
 
-  void _recomputeClaimEligibility() {
-    // Winner AND has not yet submitted a claim for the current cycle.
-    canClaimPrizeNotifier.value = _isConfirmedWinner && !_hasClaimed;
-  }
+  CollectionReference<Map<String, dynamic>> get _scoreArchives =>
+      _db.collection(scoreArchivesCollection);
 
-  /// Start real-time listeners so the CTA reacts instantly to:
-  ///  • admin confirming a new winner (`game_metadata/confirmed_winner`)
-  ///  • the winner submitting their claim (`winners_claims/{uid}`)
-  ///  • admin DELETING the claim doc → CTA re-appears so they can resubmit.
-  Future<void> startClaimEligibilityWatch() async {
-    if (_claimWatchStarted) return;
+  /// Copy one player's pre-reset scores into `score_archives` (2-day retention).
+  Future<void> _archivePlayerScoreSnapshot({
+    required String playerId,
+    required Map<String, dynamic> data,
+  }) async {
+    final oldCycle = data['tournamentCycleId']?.toString() ?? '';
+    if (oldCycle.isEmpty) return;
+
+    final total = (data['totalScore'] as num?)?.toInt() ?? 0;
+    final tScore = (data['tournamentScore'] as num?)?.toInt() ?? 0;
+    if (total <= 0 && tScore <= 0) return;
+
+    final archiveId = '${oldCycle}_$playerId';
+    final ref = _scoreArchives.doc(archiveId);
     try {
-      if (!_ready) {
-        final ok = await init();
-        if (!ok) return;
-      }
-      final user = await ensureSignedIn();
-      final authUid = user.uid;
-      _claimWatchStarted = true;
+      final existing = await ref.get();
+      if (existing.exists) return;
 
-      await _confirmedWinnerSub?.cancel();
-      await _claimSub?.cancel();
-
-      _confirmedWinnerSub = _db
-          .collection('game_metadata')
-          .doc('confirmed_winner')
-          .snapshots()
-          .listen(
-        (snap) {
-          final confirmedUid = _confirmedUidFrom(snap.data()) ?? '';
-          _isConfirmedWinner =
-              confirmedUid.isNotEmpty && confirmedUid == authUid;
-          _recomputeClaimEligibility();
-        },
-        onError: (Object e) =>
-            debugPrint('[ScoreService] confirmed_winner watch error: $e'),
-      );
-
-      _claimSub = _claimRef(authUid).snapshots().listen(
-        (snap) {
-          // Doc deleted by admin → hasClaimed=false → CTA returns for a resubmit.
-          _hasClaimed = snap.exists;
-          _recomputeClaimEligibility();
-        },
-        onError: (Object e) =>
-            debugPrint('[ScoreService] claim watch error: $e'),
-      );
+      final expireAt = DateTime.now()
+          .toUtc()
+          .add(const Duration(days: archiveRetentionDays));
+      await ref.set({
+        'cycleId': oldCycle,
+        'playerId': playerId,
+        'uid': (data['uid'] as String?)?.trim().isNotEmpty == true
+            ? data['uid']
+            : playerId,
+        'authUid': data['authUid'],
+        'displayName': data['displayName'],
+        'totalScore': total,
+        'tournamentScore': tScore,
+        'lastRunScore': (data['lastRunScore'] as num?)?.toInt() ?? 0,
+        'tournamentCycleId': oldCycle,
+        'cycleStartDate': data['cycleStartDate'],
+        'sourceUpdatedAt': data['updatedAt'],
+        'archivedAt': FieldValue.serverTimestamp(),
+        'expireAt': Timestamp.fromDate(expireAt),
+      });
+      // ignore: avoid_print
+      print('[Score] archived $archiveId total=$total tournament=$tScore');
     } catch (e) {
-      debugPrint('[ScoreService] startClaimEligibilityWatch failed: $e');
+      debugPrint('[ScoreService] archive failed ($archiveId): $e');
     }
   }
 
-  /// One-shot recompute (used right after a run submit). Safe if watch is live.
+  /// Persist reset to 0 when a stale 12h window is discovered on read.
+  Future<void> _archiveAndResetStaleScore({
+    required User user,
+    required String playerId,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      await _archivePlayerScoreSnapshot(playerId: playerId, data: data);
+      final now = DateTime.now().toUtc();
+      final cycleId = currentTournamentCycleId(now);
+      final windowStart = currentTournamentWindowStart(now);
+      final display = (data['displayName'] as String?)?.trim().isNotEmpty == true
+          ? (data['displayName'] as String).trim()
+          : defaultDisplayNameFor(playerId);
+      await _playerRef(playerId).set(
+        {
+          'playerId': playerId,
+          'authUid': user.uid,
+          'uid': playerId,
+          'displayName': display,
+          'totalScore': 0,
+          'tournamentScore': 0,
+          'tournamentCycleId': cycleId,
+          'lastRunScore': 0,
+          'cycleStartDate': Timestamp.fromDate(windowStart),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'tournamentUpdatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      writeCachedTotalScore(0);
+      // ignore: avoid_print
+      print('[Score] reset playerId=$playerId for cycle=$cycleId');
+      unawaited(_purgeExpiredScoreArchives());
+    } catch (e) {
+      debugPrint('[ScoreService] archiveAndResetStaleScore failed: $e');
+    }
+  }
+
+  /// Best-effort delete of archives past expireAt (any signed-in client).
+  Future<void> _purgeExpiredScoreArchives() async {
+    try {
+      final now = Timestamp.now();
+      final snap = await _scoreArchives
+          .where('expireAt', isLessThanOrEqualTo: now)
+          .limit(25)
+          .get();
+      if (snap.docs.isEmpty) return;
+      final batch = _db.batch();
+      for (final doc in snap.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      // ignore: avoid_print
+      print('[Score] purged ${snap.docs.length} expired score_archives');
+    } catch (e) {
+      debugPrint('[ScoreService] purgeExpiredScoreArchives skipped: $e');
+    }
+  }
+
+  DocumentReference<Map<String, dynamic>> _claimRef(String claimId) =>
+      _db.collection(claimsCollection).doc(claimId);
+
+  DocumentReference<Map<String, dynamic>> get _confirmedWinnerRef =>
+      _db.collection('game_metadata').doc('confirmed_winner');
+
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _claimDocSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _confirmedWinnerSub;
+  String? _watchedClaimUid;
+  Timer? _claimExpiryTimer;
+
+  /// PhonePe / GPay number (≥10 digits) or UPI id (`local@handle`).
+  static bool isValidUpiOrPhone(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return false;
+    if (t.contains('@')) {
+      final parts = t.split('@');
+      return parts.length == 2 &&
+          parts[0].trim().isNotEmpty &&
+          parts[1].trim().isNotEmpty;
+    }
+    final digits = t.replaceAll(RegExp(r'\D'), '');
+    return digits.length >= 10;
+  }
+
+  /// Optional email — empty OK; if provided must look like an email.
+  static bool isValidOptionalEmail(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return true;
+    return RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t);
+  }
+
+  /// One celebration per Firebase winner announcement (not a fixed date).
+  /// When admin replaces `confirmed_winner.uid`, a new key is used automatically.
+  static String celebrationSeenPrefsKey({
+    required String confirmedUid,
+    required String playerId,
+  }) {
+    return 'seen_popup_${confirmedUid}_$playerId';
+  }
+
+  Future<SharedPreferences> _ensurePrefs() async {
+    if (_prefs != null) return _prefs!;
+    try {
+      _prefsInFlight ??= SharedPreferences.getInstance().then((p) {
+        _prefs = p;
+        return p;
+      });
+      return await _prefsInFlight!;
+    } catch (e) {
+      _prefsInFlight = null;
+      rethrow;
+    }
+  }
+
+  /// Stable users_scores document id (localStorage) — NOT FirebaseAuth uid.
+  String? get stableScoreDocId {
+    final id = (_playerId ?? readStablePlayerId())?.trim();
+    if (id == null || id.isEmpty) return null;
+    return id;
+  }
+
+  /// Reads winner id from `game_metadata/confirmed_winner` — field **`uid` only**.
+  static String? confirmedUidFromData(Map<String, dynamic>? docData) {
+    if (docData == null) return null;
+    final confirmedUid = docData['uid'] as String?;
+    final t = confirmedUid?.trim();
+    if (t == null || t.isEmpty) return null;
+    return t;
+  }
+
+  /// Latest `confirmed_winner.uid` from Firestore (live admin edits).
+  Future<String?> readConfirmedWinnerUid() async {
+    try {
+      final snap = await _confirmedWinnerRef.get();
+      return confirmedUidFromData(snap.data());
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Claim] readConfirmedWinnerUid failed: $e');
+      return null;
+    }
+  }
+
+  /// Confetti once per Firebase winner announcement (localStorage + prefs).
+  Future<bool> hasSeenCelebrationPopup(String playerId) async {
+    final confirmedUid = await readConfirmedWinnerUid();
+    if (confirmedUid == null || confirmedUid.isEmpty) {
+      // No announced winner — do not show celebration.
+      return true;
+    }
+    final key = celebrationSeenPrefsKey(
+      confirmedUid: confirmedUid,
+      playerId: playerId,
+    );
+    final localKey = 'aunty_$key';
+
+    // Web localStorage is the reliable path across game opens.
+    final local = readLocalFlag(localKey);
+    if (local == true) {
+      // ignore: avoid_print
+      print('[Claim] localStorage $localKey = true');
+      return true;
+    }
+
+    try {
+      final prefs = await _ensurePrefs();
+      final seen = prefs.getBool(key) == true;
+      // ignore: avoid_print
+      print('[Claim] prefs $key = $seen');
+      if (seen) {
+        writeLocalFlag(localKey, true);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Claim] prefs read failed (local=$local): $e');
+      return local == true;
+    }
+  }
+
+  Future<void> markCelebrationPopupSeen(String playerId) async {
+    final confirmedUid = await readConfirmedWinnerUid();
+    if (confirmedUid == null || confirmedUid.isEmpty) return;
+    final key = celebrationSeenPrefsKey(
+      confirmedUid: confirmedUid,
+      playerId: playerId,
+    );
+    final localKey = 'aunty_$key';
+    writeLocalFlag(localKey, true);
+    try {
+      final prefs = await _ensurePrefs();
+      await prefs.setBool(key, true);
+      // ignore: avoid_print
+      print('[Claim] marked celebration seen key=$key (+ localStorage)');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Claim] prefs write failed (localStorage saved): $e');
+    }
+  }
+
+  /// Live watches: local score doc id + live `confirmed_winner` (admin can
+  /// replace `uid` anytime — eligibility updates from the snapshot).
+  void _ensureClaimWatches(String playerId) {
+    if (_watchedClaimUid != playerId) {
+      _claimDocSub?.cancel();
+      _claimDocSub = null;
+      _confirmedWinnerSub?.cancel();
+      _confirmedWinnerSub = null;
+      _watchedClaimUid = playerId;
+    }
+
+    _claimDocSub ??= _claimRef(playerId).snapshots().listen(
+      (snap) {
+        // ignore: avoid_print
+        print(
+          '[Claim] winners_claims/$playerId snapshot exists=${snap.exists}',
+        );
+        unawaited(_recomputeClaimEligibility(playerId: playerId));
+      },
+      onError: (Object e) {
+        // ignore: avoid_print
+        print(
+          '[Claim] claim doc watch error (still recomputing via get): $e',
+        );
+        unawaited(_recomputeClaimEligibility(playerId: playerId));
+      },
+    );
+
+    _confirmedWinnerSub ??= _confirmedWinnerRef.snapshots().listen(
+      (snap) {
+        final confirmedUid = confirmedUidFromData(snap.data());
+        // ignore: avoid_print
+        print(
+          '[Claim] confirmed_winner live update uid=$confirmedUid '
+          '(admin can replace this field anytime)',
+        );
+        unawaited(_recomputeClaimEligibility(playerId: playerId));
+      },
+      onError: (Object e) {
+        // ignore: avoid_print
+        print('[Claim] confirmed_winner watch error: $e');
+      },
+    );
+  }
+
+  /// Returns whether a claim doc exists. `null` = unknown (should not hide UI).
+  ///
+  /// Old Firestore rules denied get on missing docs (`resource == null`), which
+  /// threw permission-denied and permanently hid the claim button. Treat that
+  /// as "no claim yet" so the winner UI still works until rules are redeployed.
+  Future<bool?> _claimDocExists(String claimId) async {
+    try {
+      final snap = await _claimRef(claimId).get();
+      return snap.exists;
+    } on FirebaseException catch (e) {
+      if (e.code == 'permission-denied') {
+        // ignore: avoid_print
+        print(
+          '[Claim] winners_claims/$claimId get permission-denied '
+          '(treat as no claim — deploy updated firestore.rules)',
+        );
+        return false;
+      }
+      // ignore: avoid_print
+      print('[Claim] winners_claims/$claimId get failed: $e');
+      return null;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Claim] winners_claims/$claimId get failed: $e');
+      return null;
+    }
+  }
+
+  DateTime? _asUtcDateTime(Object? raw) {
+    if (raw is Timestamp) return raw.toDate().toUtc();
+    if (raw is DateTime) return raw.toUtc();
+    return null;
+  }
+
+  /// Prefer Firestore `claimExpiresAt` / `announcedAt+12h`, else first-seen+12h.
+  Future<DateTime> _resolveClaimDeadline({
+    required String confirmedUid,
+    required Map<String, dynamic>? confirmedData,
+  }) async {
+    final data = confirmedData;
+    if (data != null) {
+      final expires = _asUtcDateTime(
+        data['claimExpiresAt'] ?? data['claim_expires_at'],
+      );
+      if (expires != null) return expires;
+
+      final announced = _asUtcDateTime(
+        data['announcedAt'] ??
+            data['announced_at'] ??
+            data['createdAt'] ??
+            data['created_at'],
+      );
+      if (announced != null) {
+        return announced.add(const Duration(hours: claimWindowHours));
+      }
+    }
+
+    final key = 'claim_deadline_$confirmedUid';
+    try {
+      final prefs = await _ensurePrefs();
+      final ms = prefs.getInt(key);
+      if (ms != null && ms > 0) {
+        return DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+      }
+      final deadline =
+          DateTime.now().toUtc().add(const Duration(hours: claimWindowHours));
+      await prefs.setInt(key, deadline.millisecondsSinceEpoch);
+      // ignore: avoid_print
+      print('[Claim] local claim deadline set → $deadline');
+      return deadline;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Claim] claim deadline prefs failed: $e');
+      return DateTime.now().toUtc().add(const Duration(hours: claimWindowHours));
+    }
+  }
+
+  void _scheduleClaimExpiry(DateTime deadline) {
+    _claimExpiryTimer?.cancel();
+    final delay = deadline.difference(DateTime.now().toUtc());
+    if (delay.isNegative) {
+      canClaimPrizeNotifier.value = false;
+      return;
+    }
+    _claimExpiryTimer = Timer(delay + const Duration(seconds: 1), () {
+      // ignore: avoid_print
+      print('[Claim] claim window expired — hiding button');
+      canClaimPrizeNotifier.value = false;
+      unawaited(refreshClaimEligibility());
+    });
+  }
+
+  /// Match: stable users_scores id == confirmed_winner.`uid`
+  /// AND winners_claims/{id} does not exist.
+  Future<void> _recomputeClaimEligibility({required String playerId}) async {
+    try {
+      final me = playerId.trim();
+
+      // Public metadata first — never blocked by winners_claims rules.
+      final confirmed = await _confirmedWinnerRef.get();
+      final winnerId = confirmedUidFromData(confirmed.data()) ?? '';
+
+      if (winnerId.isEmpty) {
+        // ignore: avoid_print
+        print('[Claim] HIDE button — confirmed_winner.uid empty');
+        canClaimPrizeNotifier.value = false;
+        claimEligibilityReadyNotifier.value = true;
+        return;
+      }
+
+      if (winnerId != me) {
+        // ignore: avoid_print
+        print(
+          '[Claim] HIDE button — uid mismatch '
+          '(meScoreDocId=$me confirmed_winner.uid=$winnerId)',
+        );
+        canClaimPrizeNotifier.value = false;
+        claimEligibilityReadyNotifier.value = true;
+        return;
+      }
+
+      final claimExists = await _claimDocExists(me);
+      if (claimExists == true) {
+        // ignore: avoid_print
+        print('[Claim] HIDE button — winners_claims/$me already exists');
+        canClaimPrizeNotifier.value = false;
+        claimEligibilityReadyNotifier.value = true;
+        return;
+      }
+      if (claimExists == null) {
+        // ignore: avoid_print
+        print(
+          '[Claim] HIDE button — could not read winners_claims/$me '
+          '(unknown state)',
+        );
+        canClaimPrizeNotifier.value = false;
+        claimEligibilityReadyNotifier.value = true;
+        return;
+      }
+
+      final deadline = await _resolveClaimDeadline(
+        confirmedUid: winnerId,
+        confirmedData: confirmed.data(),
+      );
+      final now = DateTime.now().toUtc();
+      if (!now.isBefore(deadline)) {
+        // ignore: avoid_print
+        print('[Claim] HIDE button — claim window ended at $deadline');
+        _claimExpiryTimer?.cancel();
+        canClaimPrizeNotifier.value = false;
+        claimEligibilityReadyNotifier.value = true;
+        return;
+      }
+
+      // ignore: avoid_print
+      print(
+        '[Claim] SHOW button — confirmed_winner.uid match & no claim '
+        '(meScoreDocId=$me deadline=$deadline)',
+      );
+      _scheduleClaimExpiry(deadline);
+      canClaimPrizeNotifier.value = true;
+      claimEligibilityReadyNotifier.value = true;
+    } catch (e) {
+      // ignore: avoid_print
+      print(
+        '[Claim] eligibility error (keeping previous '
+        'canClaim=${canClaimPrizeNotifier.value}): $e',
+      );
+      claimEligibilityReadyNotifier.value = true;
+    }
+  }
+
+  /// Recompute whether this player may claim the prize.
   Future<void> refreshClaimEligibility() async {
-    if (_claimWatchStarted) return; // listeners already keep this fresh.
     try {
       if (!_ready) {
         final ok = await init();
         if (!ok) {
+          // ignore: avoid_print
+          print('[Claim] HIDE — ScoreService.init failed / not ready');
           canClaimPrizeNotifier.value = false;
+          claimEligibilityReadyNotifier.value = true;
           return;
         }
       }
-      final user = await ensureSignedIn();
-      final authUid = user.uid;
+      try {
+        await _ensurePrefs();
+      } catch (_) {}
 
-      final claimSnap = await _claimRef(authUid).get();
-      _hasClaimed = claimSnap.exists;
+      await ensureSignedIn();
+      final me = stableScoreDocId;
+      if (me == null) {
+        // ignore: avoid_print
+        print('[Claim] HIDE — stableScoreDocId missing');
+        canClaimPrizeNotifier.value = false;
+        claimEligibilityReadyNotifier.value = true;
+        return;
+      }
 
-      final confirmed = await _db
-          .collection('game_metadata')
-          .doc('confirmed_winner')
-          .get();
-      final confirmedUid = _confirmedUidFrom(confirmed.data()) ?? '';
-      _isConfirmedWinner = confirmedUid.isNotEmpty && confirmedUid == authUid;
-
-      _recomputeClaimEligibility();
+      // ignore: avoid_print
+      print('[Claim] refreshClaimEligibility scoreDocId=$me');
+      _ensureClaimWatches(me);
+      await _recomputeClaimEligibility(playerId: me);
     } catch (e) {
-      debugPrint('[ScoreService] refreshClaimEligibility failed: $e');
-      canClaimPrizeNotifier.value = false;
+      // ignore: avoid_print
+      print('[Claim] refreshClaimEligibility failed: $e');
+      claimEligibilityReadyNotifier.value = true;
     }
   }
 
-  /// Winner submits prize claim — one doc per auth uid (no spam).
-  Future<bool> submitWinnerClaim({
+  /// Winner submits contact-only claim keyed by stable score document id.
+  Future<WinnerClaimSubmitResult> submitWinnerClaim({
     required String fullName,
     required String upiId,
-    required String profileNote,
+    String email = '',
+    String profileNote = '',
   }) async {
     final name = fullName.trim();
     final upi = upiId.trim();
+    final mail = email.trim();
     final note = profileNote.trim();
-    if (name.isEmpty || upi.isEmpty) return false;
+
+    if (name.isEmpty || !isValidUpiOrPhone(upi) || !isValidOptionalEmail(mail)) {
+      return WinnerClaimSubmitResult.failed;
+    }
 
     if (!_ready) {
       final ok = await init();
-      if (!ok) return false;
+      if (!ok) return WinnerClaimSubmitResult.failed;
     }
 
     try {
       final user = await ensureSignedIn();
-      final authUid = user.uid;
-      final ref = _claimRef(authUid);
+      final me = stableScoreDocId ?? user.uid;
+      final ref = _claimRef(me);
+      _ensureClaimWatches(me);
 
-      final existing = await ref.get();
-      if (existing.exists) {
-        _hasClaimed = true;
-        _recomputeClaimEligibility();
-        return false;
+      final confirmed = await _confirmedWinnerRef.get();
+      final winnerId = confirmedUidFromData(confirmed.data()) ?? '';
+      if (winnerId.isEmpty || winnerId != me) {
+        // ignore: avoid_print
+        print(
+          '[Claim] submit blocked — uid mismatch '
+          '(meScoreDocId=$me confirmed_winner.uid=$winnerId)',
+        );
+        return WinnerClaimSubmitResult.failed;
       }
 
-      // Soft gate: must still look like the winner before write.
-      if (!_claimWatchStarted) {
-        await refreshClaimEligibility();
+      final deadline = await _resolveClaimDeadline(
+        confirmedUid: winnerId,
+        confirmedData: confirmed.data(),
+      );
+      if (!DateTime.now().toUtc().isBefore(deadline)) {
+        // ignore: avoid_print
+        print('[Claim] submit blocked — claim window ended at $deadline');
+        canClaimPrizeNotifier.value = false;
+        return WinnerClaimSubmitResult.failed;
       }
-      if (!_isConfirmedWinner) return false;
 
-      final cycleId = currentTournamentCycleId();
-      await ref.set({
-        'uid': authUid,
-        'authUid': authUid,
-        'playerId': _playerId ?? authUid,
+      final claimExists = await _claimDocExists(me);
+      if (claimExists == true) {
+        // ignore: avoid_print
+        print('[Claim] submit blocked — winners_claims/$me already exists');
+        canClaimPrizeNotifier.value = false;
+        return WinnerClaimSubmitResult.alreadySubmitted;
+      }
+
+      // Contact fields only (+ identity keys required by security rules).
+      // Never write totalScore / highScore / tournamentScore.
+      final payload = <String, dynamic>{
         'fullName': name,
         'upiId': upi,
-        'profileNote': note,
-        'cycleId': cycleId,
+        if (mail.isNotEmpty) 'email': mail,
+        if (note.isNotEmpty) 'profileNote': note,
+        // System identity (not editable by the form UI):
+        'uid': me,
+        'playerId': me,
+        'authUid': user.uid,
         'isProcessed': false,
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      await ref.set(payload);
 
-      _hasClaimed = true;
-      _recomputeClaimEligibility();
-      if (kDebugMode) {
-        debugPrint('[ScoreService] winner claim saved uid=$authUid');
-      }
-      return true;
+      canClaimPrizeNotifier.value = false;
+      // ignore: avoid_print
+      print('[Claim] submit OK claimId=$me (contact-only payload)');
+      return WinnerClaimSubmitResult.success;
     } catch (e, st) {
       debugPrint('[ScoreService] submitWinnerClaim failed: $e');
       debugPrint('$st');
-      return false;
+      return WinnerClaimSubmitResult.failed;
     }
   }
 
@@ -790,8 +1269,11 @@ class ScoreService {
       'uid': playerId,
       'displayName': display,
       'totalScore': seed,
-      'cycleStartDate': Timestamp.fromDate(now),
+      'tournamentScore': seed,
+      'tournamentCycleId': currentTournamentCycleId(now),
+      'cycleStartDate': Timestamp.fromDate(currentTournamentWindowStart(now)),
       'updatedAt': FieldValue.serverTimestamp(),
+      'tournamentUpdatedAt': FieldValue.serverTimestamp(),
       'lastRunScore': 0,
     });
     _publishTotal(seed);
@@ -800,6 +1282,29 @@ class ScoreService {
       await user.updateDisplayName(display);
     }
   }
+}
+
+/// Result of [ScoreService.submitWinnerClaim].
+enum WinnerClaimSubmitStatus { success, alreadySubmitted, failed }
+
+class WinnerClaimSubmitResult {
+  const WinnerClaimSubmitResult._(this.status);
+
+  final WinnerClaimSubmitStatus status;
+
+  static const success =
+      WinnerClaimSubmitResult._(WinnerClaimSubmitStatus.success);
+  static const alreadySubmitted =
+      WinnerClaimSubmitResult._(WinnerClaimSubmitStatus.alreadySubmitted);
+  static const failed =
+      WinnerClaimSubmitResult._(WinnerClaimSubmitStatus.failed);
+
+  static const String alreadySubmittedMessage =
+      'आपका डेटा इस टूर्नामेंट के लिए पहले से मौजूद है! (Your data is already submitted for this tournament)';
+
+  bool get isSuccess => status == WinnerClaimSubmitStatus.success;
+  bool get isAlreadySubmitted =>
+      status == WinnerClaimSubmitStatus.alreadySubmitted;
 }
 
 class LeaderboardEntry {

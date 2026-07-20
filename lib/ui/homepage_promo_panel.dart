@@ -119,16 +119,7 @@ class _OfferCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _MarketHeader(
-            badge: 'HOT DEAL',
-            title: "Today's Special",
-            subtitle: 'Limited-time offer',
-            badgeColor: HomepagePromoPanel._offer,
-            titleColor: HomepagePromoPanel._offerDeep,
-            icon: Icons.local_offer_rounded,
-          ),
           if (hasData && cfg!.offerTitle.isNotEmpty) ...[
-            const SizedBox(height: 10),
             Text(
               cfg.offerTitle,
               maxLines: 2,
@@ -140,8 +131,8 @@ class _OfferCard extends StatelessWidget {
                 height: 1.25,
               ),
             ),
+            const SizedBox(height: 14),
           ],
-          const SizedBox(height: 14),
           AspectRatio(
             aspectRatio: 16 / 9,
             child: ClipRRect(
@@ -224,35 +215,14 @@ class _OfferCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(
-                hasData && cfg!.offerPrice.isNotEmpty ? cfg.offerPrice : '—',
-                style: const TextStyle(
-                  color: HomepagePromoPanel._offerDeep,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 0.1,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0x18E85D04),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'Grab now',
-                  style: TextStyle(
-                    color: HomepagePromoPanel._offerDeep,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-            ],
+          Text(
+            hasData && cfg!.offerPrice.isNotEmpty ? cfg.offerPrice : '—',
+            style: const TextStyle(
+              color: HomepagePromoPanel._offerDeep,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.1,
+            ),
           ),
         ],
       ),
@@ -280,7 +250,6 @@ class _WinnerCard extends StatelessWidget {
           const _MarketHeader(
             badge: 'CHAMPION',
             title: 'Latest Winner',
-            subtitle: 'This week’s top player',
             badgeColor: HomepagePromoPanel._goldDeep,
             titleColor: HomepagePromoPanel._goldDeep,
             icon: Icons.emoji_events_rounded,
@@ -341,7 +310,6 @@ class _MarketHeader extends StatelessWidget {
   const _MarketHeader({
     required this.badge,
     required this.title,
-    required this.subtitle,
     required this.badgeColor,
     required this.titleColor,
     required this.icon,
@@ -350,7 +318,6 @@ class _MarketHeader extends StatelessWidget {
 
   final String badge;
   final String title;
-  final String subtitle;
   final Color badgeColor;
   final Color titleColor;
   final IconData icon;
@@ -398,17 +365,6 @@ class _MarketHeader extends StatelessWidget {
             fontWeight: FontWeight.w900,
             letterSpacing: -0.2,
             height: 1.1,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          subtitle,
-          textAlign: textAlign,
-          style: const TextStyle(
-            color: HomepagePromoPanel._muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.2,
           ),
         ),
       ],
