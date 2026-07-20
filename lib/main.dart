@@ -12,6 +12,7 @@ import 'platform/device_type.dart';
 import 'platform/fullscreen.dart';
 import 'platform/web_shell.dart';
 import 'platform/web_splash.dart';
+import 'services/homepage_config_service.dart';
 import 'services/score_service.dart';
 import 'ui/homepage_promo_panel.dart';
 import 'ui/leaderboard_panel.dart';
@@ -20,12 +21,14 @@ import 'ui/winner_claim_sheet.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Firebase core ASAP — Offer/Winner streams must NOT wait for Flame boot.
+  HomepageConfigService.warmStart();
+  unawaited(ScoreService.instance.ensureFirebaseCore());
+
   if (kIsWeb) {
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       hideWebLoadingOverlay();
-      // Give the web plugin registry a tick after first frame (avoids pigeon
-      // channel-error on cold load), then init Firebase.
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      // Auth / score warm after first paint (avoids pigeon race on cold load).
       unawaited(ScoreService.instance.init());
     });
   } else {
@@ -204,6 +207,10 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
   /// Native builds skip the gate and play immediately.
   bool _awaitingStart = kIsWeb;
 
+  /// Defer Flame [GameWidget] until after the first landing paint so Offer /
+  /// Winner cards appear instantly. Engine then boots in the background.
+  bool _mountGameEngine = !kIsWeb;
+
   /// Locked at startup — laptop browser resize won't flip mobile/desktop layout.
   late final bool _isMobileDevice;
 
@@ -218,12 +225,11 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
     if (kIsWeb) {
       WidgetsBinding.instance.addObserver(this);
       widget.game.onExitToHome = _returnToHome;
-    }
-    // Web needs a user gesture for audio/fullscreen — pause until Tap/Click to Play.
-    // Pause after the first frame so GameWidget is mounted and onLoad can run.
-    if (_awaitingStart) {
+      // First frame = promo cards + gate UI only. Then mount Flame underneath.
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _awaitingStart) {
+        if (!mounted || _mountGameEngine) return;
+        setState(() => _mountGameEngine = true);
+        if (_awaitingStart) {
           widget.game.pauseEngine();
         }
       });
@@ -299,7 +305,9 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: (kIsWeb && _awaitingStart)
+          ? HomepagePromoPanel.surface
+          : Colors.black,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final maxW = constraints.maxWidth;
@@ -386,9 +394,9 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
               ),
             ],
           );
-        },
-      ),
-    );
+      },
+    ),
+  );
   }
 
   Widget _buildGameStack({
@@ -397,46 +405,33 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
     required double maxW,
     required double maxH,
   }) {
-    if (isPhone) {
-      // Always mount the game under the gate so assets load while the
-      // player sees "Tap to Play" (hiding the canvas was delaying load
-      // until after the tap).
-      final Widget playSurface = isPortrait
-          ? Center(
-              child: RotatedBox(
-                quarterTurns: 1,
-                child: SizedBox(
-                  width: maxH,
-                  height: maxW,
-                  child: _MobileLandscapeCanvas(game: widget.game),
-                ),
-              ),
-            )
-          : _MobileLandscapeCanvas(game: widget.game);
+    // Landing: paint gate first; mount Flame only after [_mountGameEngine]
+    // so Offer/Winner are not blocked by engine boot.
+    final Widget? playSurface = !_mountGameEngine
+        ? null
+        : isPhone
+            ? (isPortrait
+                ? Center(
+                    child: RotatedBox(
+                      quarterTurns: 1,
+                      child: SizedBox(
+                        width: maxH,
+                        height: maxW,
+                        child: _MobileLandscapeCanvas(game: widget.game),
+                      ),
+                    ),
+                  )
+                : _MobileLandscapeCanvas(game: widget.game))
+            : _DesktopCanvas(game: widget.game);
 
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          const ColoredBox(color: Colors.black),
-          playSurface,
-          if (_awaitingStart)
-            _StartGate(
-              label: 'Tap to Play',
-              onStart: _startPlaying,
-              bootReadyListenable: widget.game.bootReadyNotifier,
-            ),
-        ],
-      );
-    }
-
-    // Desktop / laptop web: same market pattern — load + gate, then immersive.
     return Stack(
       fit: StackFit.expand,
       children: [
-        _DesktopCanvas(game: widget.game),
+        const ColoredBox(color: Colors.black),
+        if (playSurface != null) playSurface,
         if (_awaitingStart)
           _StartGate(
-            label: 'Click to Play',
+            label: isPhone ? 'Tap to Play' : 'Click to Play',
             onStart: _startPlaying,
             bootReadyListenable: widget.game.bootReadyNotifier,
           ),
@@ -537,12 +532,12 @@ class _StartGate extends StatelessWidget {
                                       ),
                                       SizedBox(width: 10),
                                       Text(
-                                        'Loading…',
+                                        'Loading Game Engine…',
                                         style: TextStyle(
                                           color: Color(0xFF0A1218),
-                                          fontSize: 16,
+                                          fontSize: 15,
                                           fontWeight: FontWeight.w800,
-                                          letterSpacing: 0.3,
+                                          letterSpacing: 0.2,
                                         ),
                                       ),
                                     ],
@@ -859,55 +854,55 @@ class _GameOverOverlayState extends State<_GameOverOverlay> {
         fit: StackFit.expand,
         children: [
           Center(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(begin: 0.85, end: 1.0),
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutBack,
-              builder: (_, scale, child) => Transform.scale(
-                scale: scale,
-                child: child,
-              ),
-              child: Container(
-                width: 320,
+        child: TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: 0.85, end: 1.0),
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeOutBack,
+          builder: (_, scale, child) => Transform.scale(
+            scale: scale,
+            child: child,
+          ),
+          child: Container(
+            width: 320,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF171D2E), Color(0xFF222F4A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(18),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF171D2E), Color(0xFF222F4A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(18),
                   border:
                       Border.all(color: const Color(0xFF72F2FF), width: 1.4),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x6638D5FF),
-                      blurRadius: 20,
-                      spreadRadius: 2,
-                    ),
-                  ],
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x6638D5FF),
+                  blurRadius: 20,
+                  spreadRadius: 2,
                 ),
-                child: ValueListenableBuilder<int>(
-                  valueListenable: game.scoreNotifier,
-                  builder: (_, score, __) {
-                    return ValueListenableBuilder<bool>(
-                      valueListenable: game.specialCrashNotifier,
-                      builder: (_, showLaughEmoji, __) {
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
+              ],
+            ),
+            child: ValueListenableBuilder<int>(
+              valueListenable: game.scoreNotifier,
+              builder: (_, score, __) {
+                return ValueListenableBuilder<bool>(
+                  valueListenable: game.specialCrashNotifier,
+                  builder: (_, showLaughEmoji, __) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                             const _GameOverGlyph(),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Game Over',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 30,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Game Over',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                             ValueListenableBuilder<int?>(
                               valueListenable: game.totalScoreNotifier,
                               builder: (_, submittedTotal, __) {
@@ -927,74 +922,74 @@ class _GameOverOverlayState extends State<_GameOverOverlay> {
                                           vertical: 4, horizontal: 8),
                                       child: Text(
                                         label,
-                                        style: const TextStyle(
-                                          color: Color(0xFFB6EEFF),
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                          style: const TextStyle(
+                            color: Color(0xFFB6EEFF),
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
                                         textAlign: TextAlign.center,
                                       ),
                                     );
                                   },
                                 );
                               },
-                            ),
-                            if (showLaughEmoji) ...[
-                              const SizedBox(height: 10),
-                              const Padding(
+                        ),
+                        if (showLaughEmoji) ...[
+                          const SizedBox(height: 10),
+                          const Padding(
                                 padding: EdgeInsets.symmetric(
                                     horizontal: 10, vertical: 6),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '😄😄',
-                                      style: TextStyle(fontSize: 28),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      'sorry guys',
-                                      style: TextStyle(
-                                        color: Color(0xFFFFF3C9),
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '😄😄',
+                                  style: TextStyle(fontSize: 28),
                                 ),
-                              ),
-                            ],
-                            const SizedBox(height: 18),
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                onPressed: game.restartFromOverlay,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF31D5FF),
-                                  foregroundColor: const Color(0xFF042438),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
+                                SizedBox(height: 2),
+                                Text(
+                                  'sorry guys',
+                                  style: TextStyle(
+                                    color: Color(0xFFFFF3C9),
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w700,
                                   ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 18),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: game.restartFromOverlay,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF31D5FF),
+                              foregroundColor: const Color(0xFF042438),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 12),
-                                ),
-                                child: const Text(
-                                  'Restart',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
+                            ),
+                            child: const Text(
+                              'Restart',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                          ],
-                        );
-                      },
+                          ),
+                        ),
+                      ],
                     );
                   },
-                ),
-              ),
+                );
+              },
             ),
+          ),
+        ),
           ),
           // Web only: small back arrow → home / Tap to Play + Privacy.
           if (kIsWeb)

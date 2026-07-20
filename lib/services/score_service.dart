@@ -40,6 +40,8 @@ class ScoreService {
 
   bool _ready = false;
   bool _persistenceConfigured = false;
+  bool _firebaseCoreReady = false;
+  Future<bool>? _firebaseCoreInFlight;
   String? _playerId;
 
   /// Single-flight lock — concurrent ensureSignedIn was racing into two
@@ -79,6 +81,35 @@ class ScoreService {
   DocumentReference<Map<String, dynamic>> _playerRef(String id) =>
       _users.doc(id);
 
+  /// Firebase.initializeApp only — no Auth / score warm.
+  /// Used so landing Offer/Winner can stream before Flame or sign-in.
+  Future<bool> ensureFirebaseCore() async {
+    if (_firebaseCoreReady || Firebase.apps.isNotEmpty) {
+      _firebaseCoreReady = true;
+      return true;
+    }
+    if (_optionsArePlaceholders()) return false;
+
+    _firebaseCoreInFlight ??= () async {
+      try {
+        final options = kIsWeb
+            ? DefaultFirebaseOptions.web
+            : DefaultFirebaseOptions.currentPlatform;
+        await _initializeFirebaseWithRetry(options);
+        _firebaseCoreReady = true;
+        // ignore: avoid_print
+        print('[ScoreService] Firebase core ready (promo streams can start)');
+        return true;
+      } catch (e, st) {
+        _firebaseCoreInFlight = null;
+        debugPrint('[ScoreService] ensureFirebaseCore failed: $e');
+        debugPrint('$st');
+        return false;
+      }
+    }();
+    return _firebaseCoreInFlight!;
+  }
+
   /// Fast path: initialize Firebase only. Auth + profile warm in background.
   Future<bool> init() async {
     if (_ready) return true;
@@ -101,12 +132,8 @@ class ScoreService {
     }
 
     try {
-      if (Firebase.apps.isEmpty) {
-        final options = kIsWeb
-            ? DefaultFirebaseOptions.web
-            : DefaultFirebaseOptions.currentPlatform;
-        await _initializeFirebaseWithRetry(options);
-      }
+      final coreOk = await ensureFirebaseCore();
+      if (!coreOk) return false;
       await _configureWebAuthPersistence();
       // Prefs are for claim celebration only — never block score uploads.
       try {

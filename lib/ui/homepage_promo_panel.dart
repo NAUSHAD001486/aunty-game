@@ -8,6 +8,8 @@ import '../services/homepage_config_service.dart';
 
 /// Premium two-column landing block: Offer | Latest Winner.
 /// Web home screen only — below the play card, above Privacy.
+/// Firestore streams start immediately via [HomepageConfigService] — independent
+/// of Flame game boot.
 class HomepagePromoPanel extends StatelessWidget {
   const HomepagePromoPanel({super.key});
 
@@ -36,6 +38,10 @@ class HomepagePromoPanel extends StatelessWidget {
         builder: (context, snapshot) {
           final offer = snapshot.data?.offer ?? cachedOffer;
           final winner = snapshot.data?.winner;
+          // Shimmer only until the first live doc snap (null = not arrived yet).
+          final offerLoading = offer == null;
+          final winnerLoading = winner == null;
+
           return Padding(
             padding: EdgeInsets.fromLTRB(
               side,
@@ -49,9 +55,9 @@ class HomepagePromoPanel extends StatelessWidget {
                 if (compact)
                   Column(
                     children: [
-                      _OfferCard(config: offer),
+                      _OfferCard(config: offer, loading: offerLoading),
                       const SizedBox(height: 10),
-                      _WinnerCard(winner: winner),
+                      _WinnerCard(winner: winner, loading: winnerLoading),
                     ],
                   )
                 else
@@ -59,9 +65,19 @@ class HomepagePromoPanel extends StatelessWidget {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Expanded(child: _OfferCard(config: offer)),
+                        Expanded(
+                          child: _OfferCard(
+                            config: offer,
+                            loading: offerLoading,
+                          ),
+                        ),
                         const SizedBox(width: 12),
-                        Expanded(child: _WinnerCard(winner: winner)),
+                        Expanded(
+                          child: _WinnerCard(
+                            winner: winner,
+                            loading: winnerLoading,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -105,34 +121,35 @@ class LandingPrivacyFooter extends StatelessWidget {
 }
 
 class _OfferCard extends StatelessWidget {
-  const _OfferCard({required this.config});
+  const _OfferCard({required this.config, this.loading = false});
 
   final HomepageConfig? config;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     final cfg = config;
     final hasData = cfg?.hasOffer == true;
+    final showShimmer = loading && !hasData;
 
     return _PromoCardShell(
       accent: HomepagePromoPanel._offer,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (hasData && cfg!.offerTitle.isNotEmpty) ...[
-            Text(
-              cfg.offerTitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: HomepagePromoPanel._ink,
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                height: 1.25,
-              ),
+          const Text(
+            "Today's Special Offer",
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: HomepagePromoPanel._offerDeep,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.2,
+              height: 1.2,
             ),
-            const SizedBox(height: 14),
-          ],
+          ),
+          const SizedBox(height: 14),
           AspectRatio(
             aspectRatio: 16 / 9,
             child: ClipRRect(
@@ -145,33 +162,26 @@ class _OfferCard extends StatelessWidget {
                       color: const Color(0xFFFFF4EC),
                       border: Border.all(color: const Color(0x22E85D04)),
                     ),
-                    child: hasData && cfg!.offerImage.isNotEmpty
-                        ? Image.network(
-                            cfg.offerImage,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (_, child, progress) {
-                              if (progress == null) return child;
-                              return const Center(
-                                child: SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: HomepagePromoPanel._offer,
-                                  ),
+                    child: showShimmer
+                        ? const _ShimmerBlock()
+                        : (hasData && cfg!.offerImage.isNotEmpty
+                            ? Image.network(
+                                cfg.offerImage,
+                                fit: BoxFit.cover,
+                                loadingBuilder: (_, child, progress) {
+                                  if (progress == null) return child;
+                                  return const _ShimmerBlock();
+                                },
+                                errorBuilder: (_, __, ___) =>
+                                    const _ImagePlaceholder(
+                                  icon: Icons.local_offer_outlined,
+                                  color: HomepagePromoPanel._offer,
                                 ),
-                              );
-                            },
-                            errorBuilder: (_, __, ___) =>
-                                const _ImagePlaceholder(
-                              icon: Icons.local_offer_outlined,
-                              color: HomepagePromoPanel._offer,
-                            ),
-                          )
-                        : const _ImagePlaceholder(
-                            icon: Icons.local_offer_outlined,
-                            color: HomepagePromoPanel._offer,
-                          ),
+                              )
+                            : const _ImagePlaceholder(
+                                icon: Icons.local_offer_outlined,
+                                color: HomepagePromoPanel._offer,
+                              )),
                   ),
                   Positioned(
                     top: 8,
@@ -201,29 +211,37 @@ class _OfferCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Text(
-            hasData && cfg!.offerDesc.isNotEmpty
-                ? cfg.offerDesc
-                : 'Check back soon for a fresh deal.',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: HomepagePromoPanel._muted,
-              fontSize: 13.5,
-              height: 1.4,
-              fontWeight: FontWeight.w500,
+          if (showShimmer) ...[
+            const _ShimmerLine(widthFactor: 0.85),
+            const SizedBox(height: 8),
+            const _ShimmerLine(widthFactor: 0.55),
+            const SizedBox(height: 12),
+            const _ShimmerLine(widthFactor: 0.28, height: 22),
+          ] else ...[
+            Text(
+              hasData && cfg!.offerDesc.isNotEmpty
+                  ? cfg.offerDesc
+                  : 'Check back soon for a fresh deal.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: HomepagePromoPanel._muted,
+                fontSize: 13.5,
+                height: 1.4,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            hasData && cfg!.offerPrice.isNotEmpty ? cfg.offerPrice : '—',
-            style: const TextStyle(
-              color: HomepagePromoPanel._offerDeep,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.1,
+            const SizedBox(height: 10),
+            Text(
+              hasData && cfg!.offerPrice.isNotEmpty ? cfg.offerPrice : '—',
+              style: const TextStyle(
+                color: HomepagePromoPanel._offerDeep,
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.1,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -231,14 +249,16 @@ class _OfferCard extends StatelessWidget {
 }
 
 class _WinnerCard extends StatelessWidget {
-  const _WinnerCard({required this.winner});
+  const _WinnerCard({required this.winner, this.loading = false});
 
   final ConfirmedWinner? winner;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
     final w = winner;
     final hasData = w?.hasWinner == true;
+    final showShimmer = loading && !hasData;
     final name = hasData && w!.name.isNotEmpty ? w.name : 'Coming soon';
     final score = hasData ? w!.score : 0;
 
@@ -256,50 +276,59 @@ class _WinnerCard extends StatelessWidget {
             centered: true,
           ),
           const SizedBox(height: 14),
-          _WinnerAvatar(photoUrl: w?.photo ?? ''),
+          if (showShimmer)
+            const _ShimmerCircle(size: 88)
+          else
+            _WinnerAvatar(photoUrl: w?.photo ?? ''),
           const SizedBox(height: 12),
-          Text(
-            name,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: HomepagePromoPanel._ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.2,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFF5E6A8), Color(0xFFE8D078)],
+          if (showShimmer) ...[
+            const _ShimmerLine(widthFactor: 0.5),
+            const SizedBox(height: 12),
+            const _ShimmerLine(widthFactor: 0.35, height: 28),
+          ] else ...[
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: HomepagePromoPanel._ink,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.2,
               ),
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: const Color(0x55C9A227)),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.workspace_premium,
-                  color: HomepagePromoPanel._goldDeep,
-                  size: 16,
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFF5E6A8), Color(0xFFE8D078)],
                 ),
-                const SizedBox(width: 6),
-                Text(
-                  score > 0 ? 'Score  $score' : 'Score  —',
-                  style: const TextStyle(
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: const Color(0x55C9A227)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.workspace_premium,
                     color: HomepagePromoPanel._goldDeep,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
+                    size: 16,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  Text(
+                    score > 0 ? 'Score  $score' : 'Score  —',
+                    style: const TextStyle(
+                      color: HomepagePromoPanel._goldDeep,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -506,6 +535,85 @@ class _ImagePlaceholder extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Icon(icon, color: color.withValues(alpha: 0.35), size: 38),
+    );
+  }
+}
+
+/// Subtle grey shimmer while Firestore offer/winner loads (not blank white).
+class _ShimmerBlock extends StatefulWidget {
+  const _ShimmerBlock();
+
+  @override
+  State<_ShimmerBlock> createState() => _ShimmerBlockState();
+}
+
+class _ShimmerBlockState extends State<_ShimmerBlock>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, __) {
+        final t = 0.45 + (_c.value * 0.35);
+        return ColoredBox(color: Color.fromRGBO(220, 224, 230, t));
+      },
+    );
+  }
+}
+
+class _ShimmerLine extends StatelessWidget {
+  const _ShimmerLine({this.widthFactor = 1, this.height = 12});
+
+  final double widthFactor;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      alignment: Alignment.centerLeft,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: SizedBox(
+          height: height,
+          width: double.infinity,
+          child: const _ShimmerBlock(),
+        ),
+      ),
+    );
+  }
+}
+
+class _ShimmerCircle extends StatelessWidget {
+  const _ShimmerCircle({required this.size});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipOval(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: const _ShimmerBlock(),
+      ),
     );
   }
 }

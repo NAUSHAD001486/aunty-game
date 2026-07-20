@@ -5,8 +5,11 @@ import 'package:firebase_core/firebase_core.dart';
 
 import '../models/confirmed_winner.dart';
 import '../models/homepage_config.dart';
+import '../platform/homepage_config_cache.dart';
+import 'score_service.dart';
 
 /// Read-only streams for landing Offer + Latest Winner cards.
+/// Completely independent of Flame game boot — only needs Firebase.initializeApp.
 class HomepageConfigService {
   HomepageConfigService._();
 
@@ -23,33 +26,31 @@ class HomepageConfigService {
   static DocumentReference<Map<String, dynamic>> get _winnerDoc =>
       _meta.doc(winnerDocId);
 
-  /// Wait until [Firebase.initializeApp] finishes (ScoreService.init is deferred
-  /// on web). Without this, the promo panel would subscribe once while apps is
-  /// empty and never receive Firestore updates.
+  /// Firebase core only (no Auth). Safe for public `game_metadata` reads.
   static Future<bool> waitForFirebase({
     Duration timeout = const Duration(seconds: 12),
   }) async {
     if (Firebase.apps.isNotEmpty) return true;
-    final deadline = DateTime.now().add(timeout);
-    while (DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 150));
-      if (Firebase.apps.isNotEmpty) return true;
+    try {
+      final ok = await ScoreService.instance
+          .ensureFirebaseCore()
+          .timeout(timeout);
+      return ok;
+    } catch (_) {
+      return Firebase.apps.isNotEmpty;
     }
-    return Firebase.apps.isNotEmpty;
+  }
+
+  /// Kick Firebase + streams as early as possible (call from [main]).
+  static void warmStart() {
+    unawaited(waitForFirebase());
   }
 
   /// Live offer config (`homepage_config`).
   static Stream<HomepageConfig?> offerStream() {
     return Stream.fromFuture(waitForFirebase()).asyncExpand((ready) {
       if (!ready) return Stream<HomepageConfig?>.value(null);
-      try {
-        return _offerDoc.snapshots().map((snap) {
-          if (!snap.exists || snap.data() == null) return null;
-          return HomepageConfig.fromMap(snap.data()!);
-        });
-      } catch (_) {
-        return Stream<HomepageConfig?>.value(null);
-      }
+      return offerStreamAfterReady();
     });
   }
 
@@ -57,91 +58,98 @@ class HomepageConfigService {
   static Stream<ConfirmedWinner?> confirmedWinnerStream() {
     return Stream.fromFuture(waitForFirebase()).asyncExpand((ready) {
       if (!ready) return Stream<ConfirmedWinner?>.value(null);
-      try {
-        return _winnerDoc.snapshots().map((snap) {
-          if (!snap.exists || snap.data() == null) return null;
-          return ConfirmedWinner.fromMap(snap.data()!);
-        });
-      } catch (_) {
-        return Stream<ConfirmedWinner?>.value(null);
-      }
+      return winnerStreamAfterReady();
     });
   }
 
   /// Combined stream for the promo panel (offer + winner).
+  /// Emits immediately (cache / loading), then as soon as either doc arrives
+  /// — does NOT wait for both before painting live content.
   static Stream<({HomepageConfig? offer, ConfirmedWinner? winner})> stream() {
-    return Stream.fromFuture(waitForFirebase()).asyncExpand((ready) {
-      if (!ready) {
-        return Stream.value((offer: null, winner: null));
+    return Stream.multi((controller) async {
+      final cached = readCachedHomepageConfig();
+      controller.add((offer: cached, winner: null));
+
+      final ready = await waitForFirebase();
+      if (!controller.isClosed && !ready) {
+        controller.add((offer: cached, winner: null));
+        await controller.close();
+        return;
       }
-      try {
-        return _combineLatest2(
-          offerStreamAfterReady(),
-          winnerStreamAfterReady(),
-          (HomepageConfig? o, ConfirmedWinner? w) => (offer: o, winner: w),
-        );
-      } catch (_) {
-        return Stream.value((offer: null, winner: null));
+
+      HomepageConfig? latestOffer = cached;
+      ConfirmedWinner? latestWinner;
+      var gotOfferSnap = false;
+      var gotWinnerSnap = false;
+
+      void emit() {
+        if (controller.isClosed) return;
+        controller.add((offer: latestOffer, winner: latestWinner));
+      }
+
+      late final StreamSubscription<HomepageConfig?> subOffer;
+      late final StreamSubscription<ConfirmedWinner?> subWinner;
+
+      subOffer = offerStreamAfterReady().listen(
+        (o) {
+          gotOfferSnap = true;
+          latestOffer = o;
+          if (o != null && o.hasOffer) {
+            writeCachedHomepageConfig(o);
+          }
+          emit();
+        },
+        onError: (Object e, StackTrace st) {
+          if (!controller.isClosed) controller.addError(e, st);
+        },
+      );
+
+      subWinner = winnerStreamAfterReady().listen(
+        (w) {
+          gotWinnerSnap = true;
+          latestWinner = w;
+          emit();
+        },
+        onError: (Object e, StackTrace st) {
+          if (!controller.isClosed) controller.addError(e, st);
+        },
+      );
+
+      controller.onCancel = () async {
+        await subOffer.cancel();
+        await subWinner.cancel();
+      };
+
+      // If both never fire, still keep the stream open for live updates.
+      if (!gotOfferSnap && !gotWinnerSnap) {
+        // no-op — listeners above will emit
       }
     });
   }
 
-  /// Internal: Firebase already confirmed ready (avoid nested wait).
   static Stream<HomepageConfig?> offerStreamAfterReady() {
     try {
       return _offerDoc.snapshots().map((snap) {
-        if (!snap.exists || snap.data() == null) return null;
+        if (!snap.exists || snap.data() == null) {
+          return const HomepageConfig();
+        }
         return HomepageConfig.fromMap(snap.data()!);
       });
     } catch (_) {
-      return Stream<HomepageConfig?>.value(null);
+      return Stream<HomepageConfig?>.value(const HomepageConfig());
     }
   }
 
   static Stream<ConfirmedWinner?> winnerStreamAfterReady() {
     try {
       return _winnerDoc.snapshots().map((snap) {
-        if (!snap.exists || snap.data() == null) return null;
+        if (!snap.exists || snap.data() == null) {
+          return const ConfirmedWinner();
+        }
         return ConfirmedWinner.fromMap(snap.data()!);
       });
     } catch (_) {
-      return Stream<ConfirmedWinner?>.value(null);
+      return Stream<ConfirmedWinner?>.value(const ConfirmedWinner());
     }
-  }
-
-  static Stream<R> _combineLatest2<A, B, R>(
-    Stream<A> a,
-    Stream<B> b,
-    R Function(A, B) combine,
-  ) {
-    late A latestA;
-    late B latestB;
-    var hasA = false;
-    var hasB = false;
-
-    return Stream<R>.multi((controller) {
-      final subA = a.listen(
-        (event) {
-          latestA = event;
-          hasA = true;
-          if (hasA && hasB) controller.add(combine(latestA, latestB));
-        },
-        onError: controller.addError,
-        onDone: controller.close,
-      );
-      final subB = b.listen(
-        (event) {
-          latestB = event;
-          hasB = true;
-          if (hasA && hasB) controller.add(combine(latestA, latestB));
-        },
-        onError: controller.addError,
-        onDone: controller.close,
-      );
-      controller.onCancel = () async {
-        await subA.cancel();
-        await subB.cancel();
-      };
-    });
   }
 }

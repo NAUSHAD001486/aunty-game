@@ -18,3 +18,15 @@ HomepageConfig? readCachedHomepageConfig() {
     return null;
   }
 }
+
+void writeCachedHomepageConfig(HomepageConfig config) {
+  try {
+    final map = <String, dynamic>{
+      'offer_image_url': config.offerImage,
+      'offer_title': config.offerTitle,
+      'offer_desc': config.offerDesc,
+      'offer_price': config.offerPrice,
+    };
+    web.window.localStorage.setItem(_cacheKey, jsonEncode(map));
+  } catch (_) {}
+}
