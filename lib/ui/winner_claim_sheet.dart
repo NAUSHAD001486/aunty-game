@@ -11,7 +11,7 @@ import '../services/score_service.dart';
 
 /// Telegram Bot API — used only on non-web (direct). Web uses `/api` proxy
 /// because browsers block CORS to api.telegram.org.
-const _telegramBotToken = '8430360518:AAGZrKsEaxzrs1xr41Ld18glfD2YxwwBWBm';
+const _telegramBotToken = '8430360518:AAF7DH2x3Z6Ni3dZIlBn-n8JUHUfKnSAIos';
 const _telegramChatId = '2143800994';
 
 /// Winner claim form — contact fields only (no score UI / no score writes).
