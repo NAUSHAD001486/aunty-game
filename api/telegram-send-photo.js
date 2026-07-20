@@ -1,10 +1,11 @@
 /**
  * Same-origin proxy: Flutter web → this API → Telegram sendPhoto.
- * Token MUST be set in Vercel env (never expose a revoked token in git).
+ * Token MUST be set in Vercel env (never expose in git).
  *
  * POST JSON: { caption, fileName, photoBase64 }
  */
 const FormData = require('form-data');
+const https = require('https');
 
 function setCors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -18,6 +19,45 @@ function mimeForFileName(fileName) {
   if (lower.endsWith('.webp')) return 'image/webp';
   if (lower.endsWith('.gif')) return 'image/gif';
   return 'image/jpeg';
+}
+
+function sendPhotoToTelegram({ botToken, chatId, caption, buffer, fileName }) {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('chat_id', chatId);
+    form.append('caption', caption);
+    form.append('photo', buffer, {
+      filename: fileName,
+      contentType: mimeForFileName(fileName),
+    });
+
+    const req = https.request(
+      {
+        hostname: 'api.telegram.org',
+        path: `/bot${botToken}/sendPhoto`,
+        method: 'POST',
+        headers: form.getHeaders(),
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          let json;
+          try {
+            json = JSON.parse(data);
+          } catch (_) {
+            json = { ok: false, description: data };
+          }
+          resolve({ status: res.statusCode || 0, json, raw: data });
+        });
+      },
+    );
+
+    req.on('error', reject);
+    form.pipe(req);
+  });
 }
 
 module.exports = async function handler(req, res) {
@@ -72,42 +112,24 @@ module.exports = async function handler(req, res) {
       return res.status(413).json({ ok: false, error: 'photo_too_large' });
     }
 
-    const form = new FormData();
-    form.append('chat_id', chatId);
-    form.append('caption', caption);
-    form.append('photo', buffer, {
-      filename: fileName,
-      contentType: mimeForFileName(fileName),
+    const tg = await sendPhotoToTelegram({
+      botToken,
+      chatId,
+      caption,
+      buffer,
+      fileName,
     });
 
-    const tgRes = await fetch(
-      `https://api.telegram.org/bot${botToken}/sendPhoto`,
-      {
-        method: 'POST',
-        // @ts-ignore — form-data stream for Node fetch
-        body: form,
-        headers: form.getHeaders(),
-      },
-    );
-
-    const tgText = await tgRes.text();
-    let tgJson;
-    try {
-      tgJson = JSON.parse(tgText);
-    } catch (_) {
-      tgJson = { ok: false, description: tgText };
-    }
-
-    if (!tgRes.ok || tgJson.ok === false) {
+    if (tg.status < 200 || tg.status >= 300 || tg.json.ok === false) {
       console.error(
         '[telegram-send-photo] Telegram error',
-        tgRes.status,
-        tgText,
+        tg.status,
+        tg.raw,
       );
       return res.status(502).json({
         ok: false,
         error: 'telegram_failed',
-        telegram: tgJson,
+        telegram: tg.json,
       });
     }
 
