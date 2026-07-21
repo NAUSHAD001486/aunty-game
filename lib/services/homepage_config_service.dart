@@ -63,24 +63,23 @@ class HomepageConfigService {
   }
 
   /// Combined stream for the promo panel (offer + winner).
-  /// Emits immediately (cache / loading), then as soon as either doc arrives
-  /// — does NOT wait for both before painting live content.
+  /// Emits the localStorage snapshot immediately, then merges live Firestore
+  /// snaps as each doc arrives — does NOT wait for both before painting.
   static Stream<({HomepageConfig? offer, ConfirmedWinner? winner})> stream() {
     return Stream.multi((controller) async {
-      final cached = readCachedHomepageConfig();
-      controller.add((offer: cached, winner: null));
+      final cachedOffer = readCachedHomepageConfig();
+      final cachedWinner = readCachedConfirmedWinner();
+      controller.add((offer: cachedOffer, winner: cachedWinner));
 
       final ready = await waitForFirebase();
       if (!controller.isClosed && !ready) {
-        controller.add((offer: cached, winner: null));
+        controller.add((offer: cachedOffer, winner: cachedWinner));
         await controller.close();
         return;
       }
 
-      HomepageConfig? latestOffer = cached;
-      ConfirmedWinner? latestWinner;
-      var gotOfferSnap = false;
-      var gotWinnerSnap = false;
+      HomepageConfig? latestOffer = cachedOffer;
+      ConfirmedWinner? latestWinner = cachedWinner;
 
       void emit() {
         if (controller.isClosed) return;
@@ -92,7 +91,6 @@ class HomepageConfigService {
 
       subOffer = offerStreamAfterReady().listen(
         (o) {
-          gotOfferSnap = true;
           latestOffer = o;
           if (o != null && o.hasOffer) {
             writeCachedHomepageConfig(o);
@@ -106,8 +104,10 @@ class HomepageConfigService {
 
       subWinner = winnerStreamAfterReady().listen(
         (w) {
-          gotWinnerSnap = true;
           latestWinner = w;
+          if (w != null && w.hasWinner) {
+            writeCachedConfirmedWinner(w);
+          }
           emit();
         },
         onError: (Object e, StackTrace st) {
@@ -119,11 +119,6 @@ class HomepageConfigService {
         await subOffer.cancel();
         await subWinner.cancel();
       };
-
-      // If both never fire, still keep the stream open for live updates.
-      if (!gotOfferSnap && !gotWinnerSnap) {
-        // no-op — listeners above will emit
-      }
     });
   }
 

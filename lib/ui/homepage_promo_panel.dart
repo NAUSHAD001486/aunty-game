@@ -28,17 +28,19 @@ class HomepagePromoPanel extends StatelessWidget {
     final w = MediaQuery.sizeOf(context).width;
     final compact = w < 520;
     final side = compact ? 6.0 : 10.0;
+    // Sync localStorage read — same map the HTML shell already painted.
     final cachedOffer = readCachedHomepageConfig();
+    final cachedWinner = readCachedConfirmedWinner();
 
     return ColoredBox(
       color: surface,
       child: StreamBuilder<({HomepageConfig? offer, ConfirmedWinner? winner})>(
-        initialData: (offer: cachedOffer, winner: null),
+        initialData: (offer: cachedOffer, winner: cachedWinner),
         stream: HomepageConfigService.stream(),
         builder: (context, snapshot) {
           final offer = snapshot.data?.offer ?? cachedOffer;
-          final winner = snapshot.data?.winner;
-          // Shimmer only until the first live doc snap (null = not arrived yet).
+          final winner = snapshot.data?.winner ?? cachedWinner;
+          // Shimmer only when we have neither cache nor a live snap yet.
           final offerLoading = offer == null;
           final winnerLoading = winner == null;
 
@@ -168,9 +170,14 @@ class _OfferCard extends StatelessWidget {
                             ? Image.network(
                                 cfg.offerImage,
                                 fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                                // Soft warm fill while bytes arrive — never grey
+                                // shimmer when we already know the cached URL.
                                 loadingBuilder: (_, child, progress) {
                                   if (progress == null) return child;
-                                  return const _ShimmerBlock();
+                                  return const ColoredBox(
+                                    color: Color(0xFFFFF4EC),
+                                  );
                                 },
                                 errorBuilder: (_, __, ___) =>
                                     const _ImagePlaceholder(
@@ -474,10 +481,12 @@ class _WinnerAvatar extends StatelessWidget {
                     fit: BoxFit.cover,
                     width: size,
                     height: size,
+                    gaplessPlayback: true,
                     errorBuilder: (_, __, ___) => const _AvatarFallback(),
                     loadingBuilder: (_, child, progress) {
                       if (progress == null) return child;
-                      return const _AvatarFallback(loading: true);
+                      // Warm gold fill — avoids grey circle flash on cache hit.
+                      return const ColoredBox(color: Color(0xFFFFF8E7));
                     },
                   )
                 : const _AvatarFallback(),
@@ -497,29 +506,18 @@ class _WinnerAvatar extends StatelessWidget {
 }
 
 class _AvatarFallback extends StatelessWidget {
-  const _AvatarFallback({this.loading = false});
-
-  final bool loading;
+  const _AvatarFallback();
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: const Color(0xFFFFF8E7),
+    return const ColoredBox(
+      color: Color(0xFFFFF8E7),
       child: Center(
-        child: loading
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: HomepagePromoPanel._gold,
-                ),
-              )
-            : const Icon(
-                Icons.emoji_events_outlined,
-                color: Color(0x88C9A227),
-                size: 32,
-              ),
+        child: Icon(
+          Icons.emoji_events_outlined,
+          color: Color(0x88C9A227),
+          size: 32,
+        ),
       ),
     );
   }
