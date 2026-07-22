@@ -52,7 +52,6 @@
 
       var d = window.__AUNTY_HP;
       if (!d) return;
-      preloadImg(String(d.offer_image_url || d.offer_image || '').trim());
       preloadImg(String(d.winner_photo || d.photo || d.photo_url || '').trim());
     })();
   </script>
@@ -236,156 +235,79 @@
     }
 
     #landing-shell .cards {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      align-items: stretch;
+      display: block;
     }
 
-    #landing-shell .card {
-      background: var(--card);
+    #landing-shell .card.winner {
+      background: linear-gradient(135deg, #FFFBF0 0%, #FFFFFF 48%, #FFF8E7 100%);
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: 18px;
       overflow: hidden;
-      box-shadow: 0 4px 12px rgba(10, 22, 32, 0.04);
+      box-shadow: 0 8px 18px rgba(201, 162, 39, 0.14);
       display: flex;
       flex-direction: column;
-      min-height: 220px;
     }
 
     #landing-shell .card .accent {
       height: 3px;
       width: 100%;
       flex-shrink: 0;
+      background: linear-gradient(90deg, #E8D078, #C9A227, #E8D078);
     }
-
-    #landing-shell .card.offer .accent { background: var(--offer); }
-    #landing-shell .card.winner .accent { background: var(--gold); }
 
     #landing-shell .card .body {
-      padding: 14px 14px 16px;
+      padding: 18px 22px 20px;
       display: flex;
-      flex-direction: column;
-      flex: 1;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 24px;
     }
 
-    #landing-shell .badge {
+    #landing-shell .winner-copy {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 420px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    #landing-shell .badge.winner {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
-      padding: 3px 8px;
-      border-radius: 6px;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      background: var(--gold-deep);
       color: #fff;
       font-size: 10px;
       font-weight: 800;
-      letter-spacing: 1px;
-      margin-bottom: 10px;
-      width: fit-content;
-    }
-
-    #landing-shell .badge.offer { background: var(--offer); }
-    #landing-shell .badge.winner {
-      background: var(--gold-deep);
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    /* Mirror Flutter HomepagePromoPanel typography exactly */
-    #landing-shell .card.offer h3 {
-      margin: 0 0 14px;
-      font-size: 18px;
-      font-weight: 900;
-      letter-spacing: -0.2px;
-      line-height: 1.2;
-      color: var(--offer-deep);
+      letter-spacing: 1.1px;
+      margin-bottom: 8px;
+      box-shadow: 0 2px 8px rgba(201, 162, 39, 0.2);
     }
 
     #landing-shell .card.winner h3 {
-      margin: 0 0 14px;
-      font-size: 20px;
+      margin: 0 0 10px;
+      font-size: 22px;
       font-weight: 900;
-      letter-spacing: -0.2px;
+      letter-spacing: -0.3px;
       line-height: 1.1;
       color: var(--gold-deep);
-      text-align: center;
+      text-align: left;
     }
 
-    /* Offer media — 16:9 match Flutter AspectRatio */
-    #landing-shell .offer-media {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      border-radius: 12px;
-      overflow: hidden;
-      background: #FFF4EC;
-      border: 1px solid rgba(232, 93, 4, 0.13);
-    }
-
-    #landing-shell .offer-media img {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: none;
-    }
-
-    #landing-shell .offer-media img.is-on {
-      display: block;
-    }
-
-    #landing-shell .offer-media .media-badge {
-      position: absolute;
-      top: 8px;
-      left: 8px;
-      z-index: 1;
-      padding: 4px 8px;
-      border-radius: 6px;
-      background: var(--offer);
-      color: #fff;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 0.8px;
-    }
-
-    #landing-shell .offer-desc {
-      margin: 12px 0 0;
-      font-size: 13.5px;
-      line-height: 1.4;
-      font-weight: 500;
-      color: var(--muted);
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-      min-height: 1.4em;
-    }
-
-    #landing-shell .offer-price {
-      margin: 10px 0 0;
-      font-size: 24px;
-      font-weight: 900;
-      letter-spacing: 0.1px;
-      color: var(--offer-deep);
-    }
-
-    /* Winner block */
-    #landing-shell .winner-body {
-      align-items: center;
-      text-align: center;
-    }
-
-    /* Winner loading — gold ring + shimmer circle (matches Flutter _ShimmerCircle) */
     #landing-shell .winner-avatar {
-      width: 88px;
-      height: 88px;
+      width: 128px;
+      height: 128px;
       border-radius: 50%;
-      border: 2.5px solid var(--gold);
-      box-shadow: 0 4px 14px rgba(201, 162, 39, 0.2);
+      border: 3px solid var(--gold);
+      box-shadow: 0 5px 16px rgba(201, 162, 39, 0.25);
       overflow: hidden;
-      margin: 0 auto;
       position: relative;
       background: #FFF8E7;
+      flex-shrink: 0;
     }
 
     #landing-shell .winner-avatar .skel.circle {
@@ -393,52 +315,6 @@
       inset: 0;
       border-radius: 50%;
       margin: 0;
-    }
-
-    #landing-shell .winner-skels {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      margin-top: 12px;
-    }
-
-    #landing-shell .winner-skels .skel.line {
-      margin-left: auto;
-      margin-right: auto;
-    }
-
-    /* Shimmer placeholders (shown until cache / Flutter hydrates) */
-    #landing-shell .skel {
-      background: linear-gradient(90deg, #E8ECF0 0%, #F4F6F8 50%, #E8ECF0 100%);
-      background-size: 200% 100%;
-      animation: shimmer 1.1s ease-in-out infinite;
-      border-radius: 8px;
-    }
-
-    #landing-shell .skel.line {
-      height: 12px;
-      margin-top: 10px;
-      width: 78%;
-    }
-
-    #landing-shell .skel.line.short {
-      width: 48%;
-      margin-top: 8px;
-    }
-
-    #landing-shell .skel.fill {
-      position: absolute;
-      inset: 0;
-      border-radius: 0;
-    }
-
-    #landing-shell .offer-media.has-url .skel.fill,
-    #landing-shell .offer-media.is-ready .skel.fill,
-    #landing-shell .card.offer.is-hydrated #shell-offer-skels,
-    #landing-shell .card.winner.is-hydrated #shell-winner-skels,
-    #landing-shell .card.winner.is-hydrated .winner-avatar .skel.circle {
-      display: none !important;
     }
 
     #landing-shell .winner-avatar img {
@@ -456,12 +332,16 @@
     }
 
     #landing-shell .winner-name {
-      margin: 12px 0 0;
-      font-size: 18px;
+      margin: 0;
+      font-size: 20px;
       font-weight: 900;
-      letter-spacing: 0.2px;
+      letter-spacing: 0.15px;
       color: var(--ink);
       display: none;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     #landing-shell .winner-name.is-on {
@@ -469,16 +349,16 @@
     }
 
     #landing-shell .winner-score {
-      margin: 10px auto 0;
+      margin: 12px 0 0;
       display: none;
       align-items: center;
       gap: 6px;
-      padding: 7px 14px;
-      border-radius: 22px;
+      padding: 8px 16px;
+      border-radius: 24px;
       background: linear-gradient(90deg, #F5E6A8, #E8D078);
       border: 1px solid rgba(201, 162, 39, 0.33);
       color: var(--gold-deep);
-      font-size: 13.5px;
+      font-size: 14px;
       font-weight: 800;
     }
 
@@ -486,12 +366,30 @@
       display: inline-flex;
     }
 
-    #landing-shell .offer-desc:empty {
-      display: none;
+    #landing-shell .winner-skels {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      margin-top: 4px;
     }
 
-    #landing-shell .offer-price:empty {
-      display: none;
+    #landing-shell .card.winner.is-hydrated #shell-winner-skels,
+    #landing-shell .card.winner.is-hydrated .winner-avatar .skel.circle {
+      display: none !important;
+    }
+
+    #landing-shell .skel {
+      background: linear-gradient(90deg, #E8ECF0 0%, #F4F6F8 50%, #E8ECF0 100%);
+      background-size: 200% 100%;
+      animation: shimmer 1.1s ease-in-out infinite;
+      border-radius: 8px;
+    }
+
+    #landing-shell .skel.line {
+      height: 14px;
+      margin-top: 10px;
+      width: 55%;
     }
 
     #landing-shell .privacy {
@@ -510,11 +408,37 @@
         height: 62dvh;
         border-radius: 16px;
       }
-      #landing-shell .cards {
-        grid-template-columns: 1fr;
-        gap: 10px;
+      #landing-shell .card .body {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 16px;
+        gap: 0;
       }
-      #landing-shell .card { min-height: 0; }
+      #landing-shell .winner-copy {
+        align-items: center;
+        width: 100%;
+        margin-top: 14px;
+      }
+      #landing-shell .card.winner h3 {
+        text-align: center;
+        font-size: 20px;
+      }
+      #landing-shell .winner-avatar {
+        width: 112px;
+        height: 112px;
+      }
+      #landing-shell .winner-name {
+        font-size: 18px;
+        text-align: center;
+      }
+      #landing-shell .winner-skels {
+        align-items: center;
+      }
+      #landing-shell .skel.line {
+        margin-left: auto;
+        margin-right: auto;
+      }
     }
 
     @keyframes spin {
@@ -604,21 +528,11 @@
           }
           if (!d || typeof d !== 'object') return false;
 
-          var imgUrl = String(d.offer_image_url || d.offer_image || '').trim();
-          var desc = String(d.offer_desc || '').trim();
-          var price = String(d.offer_price || '').trim();
           var photo = String(d.winner_photo || d.photo || d.photo_url || '').trim();
           var name = String(d.winner_name || d.name || d.displayName || '').trim();
           var scoreRaw = d.winner_score != null ? d.winner_score : d.score;
           var score = parseInt(scoreRaw, 10);
           if (isNaN(score)) score = 0;
-
-          var offerCard = document.getElementById('shell-offer-card');
-          var media = document.getElementById('shell-offer-media');
-          var img = document.getElementById('shell-offer-img');
-          var descEl = document.getElementById('shell-offer-desc');
-          var priceEl = document.getElementById('shell-offer-price');
-          var skelLines = document.getElementById('shell-offer-skels');
 
           var winnerCard = document.getElementById('shell-winner-card');
           var avatar = document.getElementById('shell-winner-avatar');
@@ -627,48 +541,13 @@
           var scoreEl = document.getElementById('shell-winner-score');
           var winnerSkels = document.getElementById('shell-winner-skels');
 
-          var offerHit = !!(imgUrl || desc || price);
           var winnerHit = !!(photo || name || score > 0);
-
-          if (imgUrl && img && media) {
-            media.classList.add('has-url');
-            // Paint URL as CSS background immediately (before decode).
-            media.style.backgroundImage = 'url("' + imgUrl.replace(/"/g, '\\"') + '")';
-            media.style.backgroundSize = 'cover';
-            media.style.backgroundPosition = 'center';
-            img.decoding = 'sync';
-            img.fetchPriority = 'high';
-            img.onload = function () {
-              img.classList.add('is-on');
-              media.classList.add('is-ready');
-            };
-            img.onerror = function () { /* keep bg / skel */ };
-            if (img.src !== imgUrl) img.src = imgUrl;
-            // If already cached by browser, onload may have fired — force visible.
-            if (img.complete && img.naturalWidth > 0) {
-              img.classList.add('is-on');
-              media.classList.add('is-ready');
-            }
-          }
-
-          if (desc && descEl) {
-            descEl.textContent = desc;
-            descEl.classList.add('is-ready');
-          }
-          if (price && priceEl) {
-            priceEl.textContent = price;
-            priceEl.classList.add('is-ready');
-          }
-          if (offerHit) {
-            if (skelLines) skelLines.style.display = 'none';
-            if (offerCard) offerCard.classList.add('is-hydrated');
-          }
 
           if (photo && winnerImg && avatar) {
             avatar.style.backgroundImage = 'url("' + photo.replace(/"/g, '\\"') + '")';
             avatar.style.backgroundSize = 'cover';
             avatar.style.backgroundPosition = 'center';
-            winnerImg.decoding = 'sync';
+            winnerImg.decoding = 'async';
             winnerImg.fetchPriority = 'high';
             winnerImg.onload = function () {
               winnerImg.classList.add('is-on');
@@ -694,13 +573,108 @@
             if (winnerCard) winnerCard.classList.add('is-hydrated');
           }
 
-          return offerHit || winnerHit;
+          return winnerHit;
         } catch (e) {
           return false;
         }
       }
 
+      /** Merge winner fields into aunty_homepage_config_v1 for Flutter cold boot. */
+      function mergeWinnerIntoCache(partial) {
+        try {
+          var map = {};
+          try {
+            var raw = lsGet(OFFER_CACHE_KEY);
+            if (raw) map = JSON.parse(raw) || {};
+          } catch (e) { map = {}; }
+          if (!map || typeof map !== 'object') map = {};
+          if (partial.winner_photo) map.winner_photo = partial.winner_photo;
+          if (partial.winner_name) map.winner_name = partial.winner_name;
+          if (partial.winner_score != null) map.winner_score = partial.winner_score;
+          if (partial.uid) map.uid = partial.uid;
+          if (partial.playerId) map.playerId = partial.playerId;
+          lsSet(OFFER_CACHE_KEY, JSON.stringify(map));
+          window.__AUNTY_HP = map;
+          return map;
+        } catch (e) {
+          return partial;
+        }
+      }
+
+      function firestoreField(fields, keys) {
+        if (!fields) return '';
+        for (var i = 0; i < keys.length; i++) {
+          var f = fields[keys[i]];
+          if (!f) continue;
+          if (f.stringValue != null) return String(f.stringValue).trim();
+          if (f.integerValue != null) return String(f.integerValue).trim();
+          if (f.doubleValue != null) return String(Math.round(f.doubleValue));
+        }
+        return '';
+      }
+
+      /**
+       * Instant winner from Firestore REST — no Flutter / Auth wait.
+       * Public read on game_metadata/confirmed_winner.
+       */
+      function fetchWinnerEarly() {
+        var url =
+          'https://firestore.googleapis.com/v1/projects/aunty-b7c60/' +
+          'databases/(default)/documents/game_metadata/confirmed_winner';
+        return fetch(url, { credentials: 'omit', cache: 'no-store' })
+          .then(function (res) {
+            if (!res.ok) throw new Error('winner http ' + res.status);
+            return res.json();
+          })
+          .then(function (doc) {
+            var fields = doc && doc.fields ? doc.fields : null;
+            if (!fields) return null;
+            var photo = firestoreField(fields, [
+              'winner_photo', 'photo', 'photo_url', 'winner_photo_url'
+            ]);
+            var name = firestoreField(fields, [
+              'winner_name', 'name', 'displayName'
+            ]);
+            var scoreStr = firestoreField(fields, [
+              'winner_score', 'score', 'high_score'
+            ]);
+            var score = parseInt(scoreStr, 10);
+            if (isNaN(score)) score = 0;
+            var uid = firestoreField(fields, [
+              'uid', 'authUid', 'auth_uid', 'winner_uid'
+            ]);
+            var playerId = firestoreField(fields, [
+              'playerId', 'player_id', 'winner_player_id'
+            ]);
+            if (!photo && !name && score <= 0) return null;
+            var partial = {
+              winner_photo: photo,
+              winner_name: name,
+              winner_score: score,
+              uid: uid,
+              playerId: playerId
+            };
+            mergeWinnerIntoCache(partial);
+            if (photo) {
+              try {
+                var link = document.createElement('link');
+                link.rel = 'preload';
+                link.as = 'image';
+                link.href = photo;
+                document.head.appendChild(link);
+              } catch (e) {}
+            }
+            hydrateShellFromCache(partial);
+            return partial;
+          })
+          .catch(function (e) {
+            console.warn('[Aunty] early winner fetch failed:', e);
+            return null;
+          });
+      }
+
       window.__auntyHydrateShell = hydrateShellFromCache;
+      window.__auntyFetchWinnerEarly = fetchWinnerEarly;
     })();
 
     function hideLandingShell() {
@@ -741,42 +715,25 @@
       </div>
     </div>
 
-    <section class="highlights" aria-label="Offers and winners">
+    <section class="highlights" aria-label="Latest winner">
       <div class="cards">
-        <article class="card offer" id="shell-offer-card">
-          <div class="accent" aria-hidden="true"></div>
-          <div class="body">
-            <h3>Today's Special Offer</h3>
-            <div class="offer-media" id="shell-offer-media">
-              <div class="skel fill" aria-hidden="true"></div>
-              <img id="shell-offer-img" alt="" decoding="sync" fetchpriority="high">
-              <span class="media-badge">OFFER</span>
-            </div>
-            <p class="offer-desc" id="shell-offer-desc"></p>
-            <div id="shell-offer-skels" aria-hidden="true">
-              <div class="skel line"></div>
-              <div class="skel line short"></div>
-              <div class="skel line" style="width:28%;height:22px;margin-top:12px;border-radius:6px;"></div>
-            </div>
-            <div class="offer-price" id="shell-offer-price"></div>
-          </div>
-        </article>
-
         <article class="card winner" id="shell-winner-card">
           <div class="accent" aria-hidden="true"></div>
-          <div class="body winner-body">
-            <span class="badge winner">🏆 CHAMPION</span>
-            <h3>Latest Winner</h3>
+          <div class="body">
             <div class="winner-avatar" id="shell-winner-avatar" aria-hidden="true">
               <div class="skel circle"></div>
               <img id="shell-winner-img" alt="" decoding="sync" fetchpriority="high">
             </div>
-            <div class="winner-skels" id="shell-winner-skels" aria-hidden="true">
-              <div class="skel line" style="width:50%;"></div>
-              <div class="skel line" style="width:35%;height:28px;margin-top:12px;border-radius:22px;"></div>
+            <div class="winner-copy">
+              <span class="badge winner">🏆 CHAMPION</span>
+              <h3>Latest Winner</h3>
+              <div class="winner-skels" id="shell-winner-skels" aria-hidden="true">
+                <div class="skel line"></div>
+                <div class="skel line" style="width:32%;height:30px;margin-top:12px;border-radius:24px;"></div>
+              </div>
+              <p class="winner-name" id="shell-winner-name"></p>
+              <div class="winner-score" id="shell-winner-score"></div>
             </div>
-            <p class="winner-name" id="shell-winner-name"></p>
-            <div class="winner-score" id="shell-winner-score"></div>
           </div>
         </article>
       </div>
@@ -785,11 +742,16 @@
     <div class="privacy">Privacy Policy</div>
   </div>
 
-  <!-- Blocking: paint real cache into the shell before Flutter bootstrap. -->
+  <!-- Blocking: paint cache instantly, then live Firestore winner (no Flutter wait). -->
   <script>
     (function () {
       if (typeof window.__auntyHydrateShell === 'function') {
         window.__auntyHydrateShell(window.__AUNTY_HP);
+      }
+      // Kick REST winner fetch immediately — paints shell + seeds localStorage
+      // before Flutter engine finishes booting.
+      if (typeof window.__auntyFetchWinnerEarly === 'function') {
+        window.__auntyWinnerReady = window.__auntyFetchWinnerEarly();
       }
     })();
   </script>
@@ -820,6 +782,17 @@
       } catch (e) {
         console.warn('[Aunty] Firebase JS preload failed — FlutterFire will inject:', e);
       }
+
+      // Give early winner REST a short head-start so Flutter reads a warm cache.
+      try {
+        if (window.__auntyWinnerReady) {
+          await Promise.race([
+            window.__auntyWinnerReady,
+            new Promise(function (r) { setTimeout(r, 800); })
+          ]);
+        }
+      } catch (e) {}
+
       var s = document.createElement('script');
       s.src = 'flutter_bootstrap.js';
       s.async = true;

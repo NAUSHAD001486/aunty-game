@@ -6,84 +6,44 @@ import '../platform/homepage_config_cache.dart';
 import '../platform/open_url.dart';
 import '../services/homepage_config_service.dart';
 
-/// Premium two-column landing block: Offer | Latest Winner.
-/// Web home screen only — below the play card, above Privacy.
-/// Firestore streams start immediately via [HomepageConfigService] — independent
-/// of Flame game boot.
+/// Landing block below the play card — Latest Winner showcase only.
+/// Firestore streams stay independent of Flame game boot.
 class HomepagePromoPanel extends StatelessWidget {
   const HomepagePromoPanel({super.key});
 
   static const surface = Color(0xFFF4F6F8);
   static const _ink = Color(0xFF121820);
-  static const _muted = Color(0xFF5A6570);
-  static const _offer = Color(0xFFE85D04);
-  static const _offerDeep = Color(0xFFC44900);
   static const _gold = Color(0xFFC9A227);
   static const _goldDeep = Color(0xFF8B6914);
-  static const _card = Color(0xFFFFFFFF);
   static const _line = Color(0x140A1620);
 
   @override
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final compact = w < 520;
-    final side = compact ? 6.0 : 10.0;
-    // Sync localStorage read — same map the HTML shell already painted.
-    final cachedOffer = readCachedHomepageConfig();
+    final side = compact ? 8.0 : 12.0;
     final cachedWinner = readCachedConfirmedWinner();
 
     return ColoredBox(
       color: surface,
       child: StreamBuilder<({HomepageConfig? offer, ConfirmedWinner? winner})>(
-        initialData: (offer: cachedOffer, winner: cachedWinner),
+        initialData: (offer: null, winner: cachedWinner),
         stream: HomepageConfigService.stream(),
         builder: (context, snapshot) {
-          final offer = snapshot.data?.offer ?? cachedOffer;
           final winner = snapshot.data?.winner ?? cachedWinner;
-          // Shimmer only when we have neither cache nor a live snap yet.
-          final offerLoading = offer == null;
           final winnerLoading = winner == null;
 
           return Padding(
             padding: EdgeInsets.fromLTRB(
               side,
-              compact ? 6 : 8,
+              compact ? 8 : 10,
               side,
-              compact ? 8 : 12,
+              compact ? 10 : 14,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (compact)
-                  Column(
-                    children: [
-                      _OfferCard(config: offer, loading: offerLoading),
-                      const SizedBox(height: 10),
-                      _WinnerCard(winner: winner, loading: winnerLoading),
-                    ],
-                  )
-                else
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          child: _OfferCard(
-                            config: offer,
-                            loading: offerLoading,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _WinnerCard(
-                            winner: winner,
-                            loading: winnerLoading,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
+            child: _WinnerShowcase(
+              winner: winner,
+              loading: winnerLoading,
+              compact: compact,
             ),
           );
         },
@@ -122,144 +82,17 @@ class LandingPrivacyFooter extends StatelessWidget {
   }
 }
 
-class _OfferCard extends StatelessWidget {
-  const _OfferCard({required this.config, this.loading = false});
-
-  final HomepageConfig? config;
-  final bool loading;
-
-  @override
-  Widget build(BuildContext context) {
-    final cfg = config;
-    final hasData = cfg?.hasOffer == true;
-    final showShimmer = loading && !hasData;
-
-    return _PromoCardShell(
-      accent: HomepagePromoPanel._offer,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "Today's Special Offer",
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: HomepagePromoPanel._offerDeep,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.2,
-              height: 1.2,
-            ),
-          ),
-          const SizedBox(height: 14),
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFF4EC),
-                      border: Border.all(color: const Color(0x22E85D04)),
-                    ),
-                    child: showShimmer
-                        ? const _ShimmerBlock()
-                        : (hasData && cfg!.offerImage.isNotEmpty
-                            ? Image.network(
-                                cfg.offerImage,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
-                                // Soft warm fill while bytes arrive — never grey
-                                // shimmer when we already know the cached URL.
-                                loadingBuilder: (_, child, progress) {
-                                  if (progress == null) return child;
-                                  return const ColoredBox(
-                                    color: Color(0xFFFFF4EC),
-                                  );
-                                },
-                                errorBuilder: (_, __, ___) =>
-                                    const _ImagePlaceholder(
-                                  icon: Icons.local_offer_outlined,
-                                  color: HomepagePromoPanel._offer,
-                                ),
-                              )
-                            : const _ImagePlaceholder(
-                                icon: Icons.local_offer_outlined,
-                                color: HomepagePromoPanel._offer,
-                              )),
-                  ),
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: HomepagePromoPanel._offer,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        'OFFER',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (showShimmer) ...[
-            const _ShimmerLine(widthFactor: 0.85),
-            const SizedBox(height: 8),
-            const _ShimmerLine(widthFactor: 0.55),
-            const SizedBox(height: 12),
-            const _ShimmerLine(widthFactor: 0.28, height: 22),
-          ] else ...[
-            Text(
-              hasData && cfg!.offerDesc.isNotEmpty
-                  ? cfg.offerDesc
-                  : 'Check back soon for a fresh deal.',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: HomepagePromoPanel._muted,
-                fontSize: 13.5,
-                height: 1.4,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              hasData && cfg!.offerPrice.isNotEmpty ? cfg.offerPrice : '—',
-              style: const TextStyle(
-                color: HomepagePromoPanel._offerDeep,
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.1,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _WinnerCard extends StatelessWidget {
-  const _WinnerCard({required this.winner, this.loading = false});
+/// Full-width champion banner — avatar + identity in one composed strip.
+class _WinnerShowcase extends StatelessWidget {
+  const _WinnerShowcase({
+    required this.winner,
+    required this.loading,
+    required this.compact,
+  });
 
   final ConfirmedWinner? winner;
   final bool loading;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -268,139 +101,140 @@ class _WinnerCard extends StatelessWidget {
     final showShimmer = loading && !hasData;
     final name = hasData && w!.name.isNotEmpty ? w.name : 'Coming soon';
     final score = hasData ? w!.score : 0;
+    final avatarSize = compact ? 112.0 : 128.0;
 
-    return _PromoCardShell(
-      accent: HomepagePromoPanel._gold,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          const _MarketHeader(
-            badge: 'CHAMPION',
-            title: 'Latest Winner',
-            badgeColor: HomepagePromoPanel._goldDeep,
-            titleColor: HomepagePromoPanel._goldDeep,
-            icon: Icons.emoji_events_rounded,
-            centered: true,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: HomepagePromoPanel._line),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFFFFFBF0),
+            Color(0xFFFFFFFF),
+            Color(0xFFFFF8E7),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: HomepagePromoPanel._gold.withValues(alpha: 0.14),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
-          const SizedBox(height: 14),
-          if (showShimmer)
-            const _ShimmerCircle(size: 88)
-          else
-            _WinnerAvatar(photoUrl: w?.photo ?? ''),
-          const SizedBox(height: 12),
-          if (showShimmer) ...[
-            const _ShimmerLine(widthFactor: 0.5),
-            const SizedBox(height: 12),
-            const _ShimmerLine(widthFactor: 0.35, height: 28),
-          ] else ...[
-            Text(
-              name,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: HomepagePromoPanel._ink,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.2,
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              height: 3,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xFFE8D078),
+                    Color(0xFFC9A227),
+                    Color(0xFFE8D078),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFF5E6A8), Color(0xFFE8D078)],
-                ),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0x55C9A227)),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                compact ? 16 : 22,
+                compact ? 16 : 18,
+                compact ? 16 : 22,
+                compact ? 16 : 20,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(
-                    Icons.workspace_premium,
-                    color: HomepagePromoPanel._goldDeep,
-                    size: 16,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    score > 0 ? 'Score  $score' : 'Score  —',
-                    style: const TextStyle(
-                      color: HomepagePromoPanel._goldDeep,
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
+              child: compact
+                  ? _CompactWinnerBody(
+                      showShimmer: showShimmer,
+                      name: name,
+                      score: score,
+                      photoUrl: w?.photo ?? '',
+                      avatarSize: avatarSize,
+                    )
+                  : _WideWinnerBody(
+                      showShimmer: showShimmer,
+                      name: name,
+                      score: score,
+                      photoUrl: w?.photo ?? '',
+                      avatarSize: avatarSize,
                     ),
-                  ),
-                ],
-              ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
-class _MarketHeader extends StatelessWidget {
-  const _MarketHeader({
-    required this.badge,
-    required this.title,
-    required this.badgeColor,
-    required this.titleColor,
-    required this.icon,
-    this.centered = false,
+class _WideWinnerBody extends StatelessWidget {
+  const _WideWinnerBody({
+    required this.showShimmer,
+    required this.name,
+    required this.score,
+    required this.photoUrl,
+    required this.avatarSize,
   });
 
-  final String badge;
-  final String title;
-  final Color badgeColor;
-  final Color titleColor;
-  final IconData icon;
-  final bool centered;
+  final bool showShimmer;
+  final String name;
+  final int score;
+  final String photoUrl;
+  final double avatarSize;
 
   @override
   Widget build(BuildContext context) {
-    final align =
-        centered ? CrossAxisAlignment.center : CrossAxisAlignment.start;
-    final textAlign = centered ? TextAlign.center : TextAlign.start;
-
-    return Column(
-      crossAxisAlignment: align,
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-          decoration: BoxDecoration(
-            color: badgeColor,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
+        if (showShimmer)
+          _ShimmerCircle(size: avatarSize)
+        else
+          _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
+        const SizedBox(width: 24),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 12, color: Colors.white),
-              const SizedBox(width: 5),
-              Text(
-                badge,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.0,
+              const _ChampionBadge(),
+              const SizedBox(height: 8),
+              const Text(
+                'Latest Winner',
+                style: TextStyle(
+                  color: HomepagePromoPanel._goldDeep,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.3,
+                  height: 1.1,
                 ),
               ),
+              const SizedBox(height: 10),
+              if (showShimmer) ...[
+                const _ShimmerLine(widthFactor: 0.55, height: 18),
+                const SizedBox(height: 12),
+                const _ShimmerLine(widthFactor: 0.32, height: 30),
+              ] else ...[
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: HomepagePromoPanel._ink,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.15,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _ScorePill(score: score),
+              ],
             ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          title,
-          textAlign: textAlign,
-          style: TextStyle(
-            color: titleColor,
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.2,
-            height: 1.1,
           ),
         ),
       ],
@@ -408,52 +242,154 @@ class _MarketHeader extends StatelessWidget {
   }
 }
 
-class _PromoCardShell extends StatelessWidget {
-  const _PromoCardShell({required this.child, required this.accent});
+class _CompactWinnerBody extends StatelessWidget {
+  const _CompactWinnerBody({
+    required this.showShimmer,
+    required this.name,
+    required this.score,
+    required this.photoUrl,
+    required this.avatarSize,
+  });
 
-  final Widget child;
-  final Color accent;
+  final bool showShimmer;
+  final String name;
+  final int score;
+  final String photoUrl;
+  final double avatarSize;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    return Column(
+      children: [
+        const _ChampionBadge(),
+        const SizedBox(height: 8),
+        const Text(
+          'Latest Winner',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: HomepagePromoPanel._goldDeep,
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.2,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (showShimmer)
+          _ShimmerCircle(size: avatarSize)
+        else
+          _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
+        const SizedBox(height: 12),
+        if (showShimmer) ...[
+          const _ShimmerLine(widthFactor: 0.5, height: 16),
+          const SizedBox(height: 12),
+          const _ShimmerLine(widthFactor: 0.36, height: 28),
+        ] else ...[
+          Text(
+            name,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: HomepagePromoPanel._ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _ScorePill(score: score),
+        ],
+      ],
+    );
+  }
+}
+
+class _ChampionBadge extends StatelessWidget {
+  const _ChampionBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: HomepagePromoPanel._card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: HomepagePromoPanel._line),
-        boxShadow: [
+        color: HomepagePromoPanel._goldDeep,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: const [
           BoxShadow(
-            color: accent.withValues(alpha: 0.10),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: Color(0x33C9A227),
+            blurRadius: 8,
+            offset: Offset(0, 2),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(height: 3, color: accent),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-              child: child,
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.emoji_events_rounded, size: 13, color: Colors.white),
+          SizedBox(width: 5),
+          Text(
+            'CHAMPION',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
             ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScorePill extends StatelessWidget {
+  const _ScorePill({required this.score});
+
+  final int score;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF5E6A8), Color(0xFFE8D078)],
         ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0x55C9A227)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.workspace_premium,
+            color: HomepagePromoPanel._goldDeep,
+            size: 17,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            score > 0 ? 'Score  $score' : 'Score  —',
+            style: const TextStyle(
+              color: HomepagePromoPanel._goldDeep,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _WinnerAvatar extends StatelessWidget {
-  const _WinnerAvatar({required this.photoUrl});
+  const _WinnerAvatar({required this.photoUrl, this.size = 88});
 
   final String photoUrl;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    const size = 88.0;
     final hasPhoto = photoUrl.trim().isNotEmpty;
 
     return Stack(
@@ -465,12 +401,12 @@ class _WinnerAvatar extends StatelessWidget {
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: HomepagePromoPanel._gold, width: 2.5),
+            border: Border.all(color: HomepagePromoPanel._gold, width: 3),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x33C9A227),
-                blurRadius: 14,
-                offset: Offset(0, 4),
+                color: Color(0x40C9A227),
+                blurRadius: 16,
+                offset: Offset(0, 5),
               ),
             ],
           ),
@@ -485,7 +421,6 @@ class _WinnerAvatar extends StatelessWidget {
                     errorBuilder: (_, __, ___) => const _AvatarFallback(),
                     loadingBuilder: (_, child, progress) {
                       if (progress == null) return child;
-                      // Warm gold fill — avoids grey circle flash on cache hit.
                       return const ColoredBox(color: Color(0xFFFFF8E7));
                     },
                   )
@@ -493,11 +428,11 @@ class _WinnerAvatar extends StatelessWidget {
           ),
         ),
         Positioned(
-          top: -4,
+          top: -6,
           child: Icon(
             Icons.workspace_premium,
             color: HomepagePromoPanel._goldDeep.withValues(alpha: 0.95),
-            size: 22,
+            size: 24,
           ),
         ),
       ],
@@ -516,28 +451,13 @@ class _AvatarFallback extends StatelessWidget {
         child: Icon(
           Icons.emoji_events_outlined,
           color: Color(0x88C9A227),
-          size: 32,
+          size: 36,
         ),
       ),
     );
   }
 }
 
-class _ImagePlaceholder extends StatelessWidget {
-  const _ImagePlaceholder({required this.icon, required this.color});
-
-  final IconData icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Icon(icon, color: color.withValues(alpha: 0.35), size: 38),
-    );
-  }
-}
-
-/// Subtle grey shimmer while Firestore offer/winner loads (not blank white).
 class _ShimmerBlock extends StatefulWidget {
   const _ShimmerBlock();
 
