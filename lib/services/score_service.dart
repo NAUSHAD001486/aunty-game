@@ -1195,19 +1195,14 @@ class ScoreService {
     }
   }
 
-  /// Winner submits contact-only claim keyed by stable score document id.
+  /// Winner submits name + photo-live consent (keyed by stable score doc id).
   Future<WinnerClaimSubmitResult> submitWinnerClaim({
     required String fullName,
-    required String upiId,
-    String email = '',
-    String profileNote = '',
+    required bool photoLiveConsent,
   }) async {
     final name = fullName.trim();
-    final upi = upiId.trim();
-    final mail = email.trim();
-    final note = profileNote.trim();
 
-    if (name.isEmpty || !isValidUpiOrPhone(upi) || !isValidOptionalEmail(mail)) {
+    if (name.isEmpty || !photoLiveConsent) {
       return WinnerClaimSubmitResult.failed;
     }
 
@@ -1252,14 +1247,11 @@ class ScoreService {
         return WinnerClaimSubmitResult.alreadySubmitted;
       }
 
-      // Contact fields only (+ identity keys required by security rules).
-      // Never write totalScore / highScore / tournamentScore.
+      // Identity + consent only — never write score fields.
       final payload = <String, dynamic>{
         'fullName': name,
-        'upiId': upi,
-        if (mail.isNotEmpty) 'email': mail,
-        if (note.isNotEmpty) 'profileNote': note,
-        // System identity (not editable by the form UI):
+        'photoLiveConsent': true,
+        'photoLiveConsentAt': FieldValue.serverTimestamp(),
         'uid': me,
         'playerId': me,
         'authUid': user.uid,

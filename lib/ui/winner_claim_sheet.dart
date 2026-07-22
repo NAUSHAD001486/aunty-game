@@ -45,19 +45,16 @@ class WinnerClaimSheet extends StatefulWidget {
 class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
-  final _upiCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
 
   Uint8List? _photoBytes;
   String _photoFileName = 'winner_claim.jpg';
+  bool _photoLiveConsent = false;
   bool _submitting = false;
   String? _error;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _upiCtrl.dispose();
-    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -85,7 +82,6 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
 
   Future<bool> _sendPhotoToTelegram({
     required String fullName,
-    required String upiId,
     required Uint8List bytes,
     required String fileName,
   }) async {
@@ -93,7 +89,7 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
     final caption = '''
 🔔 NEW TOURNAMENT WINNER CLAIM
 Name: $fullName
-PhonePe/UPI ID: $upiId
+Photo live consent: YES
 Player Firestore ID: $playerId
 '''.trim();
 
@@ -172,6 +168,13 @@ Player Firestore ID: $playerId
       setState(() => _error = 'Please choose a photo from your gallery');
       return;
     }
+    if (!_photoLiveConsent) {
+      setState(
+        () => _error =
+            'Please confirm permission to display your photo on this site',
+      );
+      return;
+    }
 
     setState(() {
       _submitting = true;
@@ -181,7 +184,6 @@ Player Firestore ID: $playerId
     try {
       final telegramOk = await _sendPhotoToTelegram(
         fullName: _nameCtrl.text.trim(),
-        upiId: _upiCtrl.text.trim(),
         bytes: bytes,
         fileName: _photoFileName,
       );
@@ -196,12 +198,9 @@ Player Firestore ID: $playerId
         return;
       }
 
-      // Same Firestore claim write — no image URL / profileNote.
       final result = await ScoreService.instance.submitWinnerClaim(
         fullName: _nameCtrl.text,
-        upiId: _upiCtrl.text,
-        email: _emailCtrl.text,
-        profileNote: '',
+        photoLiveConsent: true,
       );
 
       if (!mounted) return;
@@ -284,7 +283,7 @@ Player Firestore ID: $playerId
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Contact details only — name & UPI required.',
+                      'Confirm your name and photo to claim your prize.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color(0xFF5A6570),
@@ -296,39 +295,11 @@ Player Firestore ID: $playerId
                     _field(
                       controller: _nameCtrl,
                       label: 'Full Name',
-                      hint: 'As on your UPI account',
-                      textInputAction: TextInputAction.next,
+                      hint: 'Your display name',
+                      textInputAction: TextInputAction.done,
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Name is required'
                           : null,
-                    ),
-                    const SizedBox(height: 12),
-                    _field(
-                      controller: _upiCtrl,
-                      label: 'PhonePe / Google Pay / UPI Number',
-                      hint: '9876543210 or name@upi',
-                      keyboard: TextInputType.text,
-                      textInputAction: TextInputAction.next,
-                      validator: (v) {
-                        if (ScoreService.isValidUpiOrPhone(v ?? '')) {
-                          return null;
-                        }
-                        return 'Please enter a valid 10-digit number or UPI ID';
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    _field(
-                      controller: _emailCtrl,
-                      label: 'Email (Optional)',
-                      hint: 'you@example.com',
-                      keyboard: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.done,
-                      validator: (v) {
-                        if (ScoreService.isValidOptionalEmail(v ?? '')) {
-                          return null;
-                        }
-                        return 'Please enter a valid email';
-                      },
                     ),
                     const SizedBox(height: 14),
                     Center(
@@ -374,6 +345,62 @@ Player Firestore ID: $playerId
                               style: const TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: _submitting
+                          ? null
+                          : () => setState(() {
+                                _photoLiveConsent = !_photoLiveConsent;
+                                if (_photoLiveConsent) _error = null;
+                              }),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: Checkbox(
+                                value: _photoLiveConsent,
+                                activeColor: const Color(0xFFC9A227),
+                                checkColor: const Color(0xFF2A1F00),
+                                side: const BorderSide(
+                                  color: Color(0xFF8B6914),
+                                  width: 1.6,
+                                ),
+                                onChanged: _submitting
+                                    ? null
+                                    : (v) => setState(() {
+                                          _photoLiveConsent = v ?? false;
+                                          if (_photoLiveConsent) {
+                                            _error = null;
+                                          }
+                                        }),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          const Expanded(
+                            child: Text(
+                              'I give aunty_pari permission to publish my name '
+                              'and photo on this website’s Latest Winner / '
+                              'Champion section. I understand my photo will '
+                              'appear live only with this consent, and may '
+                              'remain publicly visible until a new champion '
+                              'is announced.',
+                              style: TextStyle(
+                                color: Color(0xFF3D4550),
+                                fontSize: 12.5,
+                                height: 1.4,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),

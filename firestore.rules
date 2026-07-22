@@ -71,9 +71,8 @@ service cloud.firestore {
         && request.resource.data.authUid == request.auth.uid
         && request.resource.data.isProcessed == false
         && request.resource.data.fullName is string
-        && request.resource.data.upiId is string
         && request.resource.data.fullName.size() > 0
-        && request.resource.data.upiId.size() > 0
+        && request.resource.data.photoLiveConsent == true
         && !('totalScore' in request.resource.data)
         && !('highScore' in request.resource.data)
         && !('tournamentScore' in request.resource.data)
