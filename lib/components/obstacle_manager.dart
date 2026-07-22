@@ -6,7 +6,7 @@ import '../game/layout_config.dart';
 import 'bamboo_obstacle.dart';
 
 class ObstacleManager extends Component with HasGameRef {
-  /// Points to add when the player clears bamboo (1 per old stalk, 2 per live pair).
+  /// Points to add when the player clears one bamboo pair.
   final void Function(int points) onScore;
 
   ObstacleManager({required this.onScore});
@@ -20,13 +20,15 @@ class ObstacleManager extends Component with HasGameRef {
   final List<BambooObstacle> _oldPipes = [];
   final Set<BambooObstacle> _scoredPipes = {};
 
+  /// Bottoms only — each pair awards +1 exactly once (never the top stalk).
+  final Set<BambooObstacle> _scoreTriggers = {};
+
   Sprite? _sprite1;
   Sprite? _sprite2;
 
   double _runSpeed = GameConfig.obstacleSpeed;
   double _speed = GameConfig.obstacleSpeed;
   bool _frozen = false;
-  double _lastPipeWidth = 120;
   bool _isSpawning = false;
   bool _spawnNextFrame = false;
 
@@ -41,6 +43,12 @@ class ObstacleManager extends Component with HasGameRef {
       LayoutConfig.widthOf(LayoutConfig.playerXFactor, _screenW);
   static final double _respawnX =
       LayoutConfig.widthOf(LayoutConfig.respawnTriggerXFactor, _screenW);
+
+  /// Center-to-center travel before the next pair (keeps current difficulty).
+  static final double _pairTravel = _screenW - _respawnX;
+
+  /// Spawn X of the active bottom (so off-screen entry doesn't change spacing).
+  double _activeSpawnX = _screenW;
 
   @override
   Future<void> onLoad() async {
@@ -86,23 +94,28 @@ class ObstacleManager extends Component with HasGameRef {
       pipe.x -= move;
     }
 
-    // One score event per active bamboo pair (still +2 total via MyGame) —
-    // was two HUD/speed updates in the same frames and felt like a stutter.
+    // One score event per bamboo pair (+1), including demoted old bottoms.
     _tryScoreActivePair();
     for (final pipe in _oldPipes) {
-      _tryScorePipe(pipe, _playerX);
+      _tryScoreTrigger(pipe);
     }
 
+    // Cull as soon as fully off-screen (center + half-width < 0).
+    // Old threshold (-2× width) kept dead pipes + hitboxes alive for seconds
+    // and stuttered after closer spawn densified on-screen pairs.
     for (int i = _oldPipes.length - 1; i >= 0; i--) {
       final pipe = _oldPipes[i];
-      if (pipe.x < -_lastPipeWidth * 2) {
+      if (pipe.x + pipe.size.x * 0.5 < 0) {
         _scoredPipes.remove(pipe);
+        _scoreTriggers.remove(pipe);
         pipe.removeFromParent();
         _oldPipes.removeAt(i);
       }
     }
 
-    if (!_isSpawning && !_spawnNextFrame && _bottom!.x < _respawnX) {
+    if (!_isSpawning &&
+        !_spawnNextFrame &&
+        _bottom!.x < _activeSpawnX - _pairTravel) {
       _spawnNextFrame = true;
     }
   }
@@ -110,23 +123,15 @@ class ObstacleManager extends Component with HasGameRef {
   /// Scores the current top+bottom pair once when the lower stalk clears.
   void _tryScoreActivePair() {
     final bottom = _bottom;
-    final top = _midTop;
-    if (bottom == null || top == null) return;
-    if (_scoredPipes.contains(bottom)) return;
-
-    final rightEdge = bottom.x + (bottom.size.x / 2);
-    if (rightEdge < _playerX) {
-      _scoredPipes.add(bottom);
-      _scoredPipes.add(top);
-      // Same total as before (+1 per stalk) but one HUD/speed/audio update.
-      onScore(2);
-    }
+    if (bottom == null) return;
+    _tryScoreTrigger(bottom);
   }
 
-  void _tryScorePipe(BambooObstacle pipe, double playerX) {
+  void _tryScoreTrigger(BambooObstacle pipe) {
+    if (!_scoreTriggers.contains(pipe)) return;
     if (_scoredPipes.contains(pipe)) return;
     final rightEdge = pipe.x + (pipe.size.x / 2);
-    if (rightEdge < playerX) {
+    if (rightEdge < _playerX) {
       _scoredPipes.add(pipe);
       onScore(1);
     }
@@ -173,9 +178,10 @@ class ObstacleManager extends Component with HasGameRef {
       final double pipeWidth =
           img == '2-out.png' ? 3264 * 0.105 : 1024 * 0.35;
 
-      _lastPipeWidth = pipeWidth;
-
-      const startX = screenW;
+      // Center-anchored: place fully off the right edge so it slides in
+      // (old startX = screenW put half the stalk on-screen instantly = "pop").
+      final startX = screenW + pipeWidth * 0.5;
+      _activeSpawnX = startX;
       final zigzagOffset =
           LayoutConfig.widthOf(LayoutConfig.zigzagOffsetFactor, screenW);
       final verticalOffset =
@@ -190,6 +196,7 @@ class ObstacleManager extends Component with HasGameRef {
         position: Vector2(startX, screenH + verticalOffset),
         size: Vector2(pipeWidth, bottomHeight),
       );
+      _scoreTriggers.add(_bottom!);
 
       _midTop = BambooObstacle(
         sprite: sprite,
@@ -228,6 +235,7 @@ class ObstacleManager extends Component with HasGameRef {
     }
     _oldPipes.clear();
     _scoredPipes.clear();
+    _scoreTriggers.clear();
     _bottom = null;
     _midTop = null;
 

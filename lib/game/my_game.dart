@@ -144,7 +144,10 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     unawaited(() async {
       final cached = ScoreService.instance.myTotalNotifier.value;
       if (cached != null && !_notifiersDisposed) {
-        sessionBaseTotalNotifier.value = cached;
+        final cur = sessionBaseTotalNotifier.value;
+        if (cur == null || cached >= cur) {
+          sessionBaseTotalNotifier.value = cached;
+        }
       }
 
       int? total;
@@ -157,7 +160,11 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       // After game-over submit, that path owns the notifiers — don't clobber.
       if (_didSubmitScore) return;
       if (total != null) {
-        sessionBaseTotalNotifier.value = total;
+        final cur = sessionBaseTotalNotifier.value;
+        // Never pull the session base down from a late/stale Firestore read.
+        if (cur == null || total >= cur) {
+          sessionBaseTotalNotifier.value = total;
+        }
       } else if (sessionBaseTotalNotifier.value == null) {
         sessionBaseTotalNotifier.value = cached ?? 0;
       }
@@ -186,9 +193,11 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       final total = await ScoreService.instance.submitRunScore(runScore);
       if (_notifiersDisposed) return;
       if (total != null) {
-        totalScoreNotifier.value = total;
-        sessionBaseTotalNotifier.value = total;
-        ScoreService.instance.rememberLocalTotal(total);
+        // Keep the higher of optimistic vs server — never flash downward.
+        final merged = total >= optimistic ? total : optimistic;
+        totalScoreNotifier.value = merged;
+        sessionBaseTotalNotifier.value = merged;
+        ScoreService.instance.rememberLocalTotal(merged);
       }
       // If submit failed, keep optimistic so the player still sees run+base.
     }());

@@ -739,9 +739,16 @@ class _HudOverlay extends StatelessWidget {
                   return ValueListenableBuilder<int?>(
                     valueListenable: ScoreService.instance.myTotalNotifier,
                     builder: (_, serviceTotal, __) {
-                      // Live service total wins (updates after Firestore submit).
-                      // sessionTotal is only a fallback before auth warms.
-                      final stored = serviceTotal ?? sessionTotal;
+                      // Prefer the higher of live service vs session base so a
+                      // late Firestore read never flashes the HUD downward.
+                      final int? stored;
+                      if (serviceTotal != null && sessionTotal != null) {
+                        stored = serviceTotal >= sessionTotal
+                            ? serviceTotal
+                            : sessionTotal;
+                      } else {
+                        stored = serviceTotal ?? sessionTotal;
+                      }
                       return _ScoreBadge(
                         score: score,
                         total: stored,
@@ -911,9 +918,19 @@ class _GameOverOverlayState extends State<_GameOverOverlay> {
                                       ScoreService.instance.myTotalNotifier,
                                   builder: (_, serviceTotal, __) {
                                     // Prefer post-submit total, then live cache.
-                                    final total = submittedTotal ??
-                                        serviceTotal ??
-                                        game.sessionBaseTotalNotifier.value;
+                                    // Never pick a lower service total over the
+                                    // optimistic submitted total already shown.
+                                    final int? total;
+                                    if (submittedTotal != null &&
+                                        serviceTotal != null) {
+                                      total = submittedTotal >= serviceTotal
+                                          ? submittedTotal
+                                          : serviceTotal;
+                                    } else {
+                                      total = submittedTotal ??
+                                          serviceTotal ??
+                                          game.sessionBaseTotalNotifier.value;
+                                    }
                                     final label = total != null
                                         ? 'Final Score: $score / $total'
                                         : 'Final Score: $score';

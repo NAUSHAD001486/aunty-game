@@ -42,11 +42,11 @@ class GameConfig {
   static const double obstacleSpeedMax = 360.0;
 
   /// Bump on score 2, 4, 6, … (every N points).
-  static const int speedBumpEveryScore = 2;
+  static const int speedBumpEveryScore = 1;
 
   /// Each bump adds this much (your **1.5**).
   /// In-game: +15 px/s per bump (`1.5 × 10`) so it feels clear but smooth.
-  static const double speedBumpAmount = 1.5;
+  static const double speedBumpAmount = 2.0;
 
   /// Spawn interval (seconds)
   static const double obstacleSpawnInterval = 1.6;

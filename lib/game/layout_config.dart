@@ -47,7 +47,10 @@ class LayoutConfig {
   static const double topPipeHeightRangeFactor = 240 / referenceHeight;
   static const double topPipeAnchorYFactor = 0.50;
 
-  static const double respawnTriggerXFactor = 0.10;
+  /// When the active pair reaches this X (as a fraction of screen width),
+  /// the next pair spawns at the right edge. Higher = pairs closer together.
+  /// Was 0.10 (~0.90× screen gap); 0.28 ≈ 20% closer (~0.72× screen gap).
+  static const double respawnTriggerXFactor = 0.28;
   static const double playerXFactor = 0.30;
   static const double playerYFactor = 0.60;
 

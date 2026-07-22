@@ -214,16 +214,23 @@ class ScoreService {
     }
   }
 
-  void _publishTotal(int total, {bool allowDowngradeToZero = false}) {
+  void _publishTotal(int total, {bool allowDowngrade = false}) {
+    if (total < 0) return;
     final cached = readCachedTotalScore();
-    // Never let a transient Firestore miss wipe a known-good local total.
-    if (!allowDowngradeToZero &&
-        total == 0 &&
-        cached != null &&
-        cached > 0) {
-      myTotalNotifier.value = cached;
+    final current = myTotalNotifier.value;
+    var floor = current;
+    if (cached != null && (floor == null || cached > floor)) {
+      floor = cached;
+    }
+
+    // Stale/slow Firestore reads must never flash the HUD downward after an
+    // optimistic (base+run) total was already shown — except explicit resets.
+    if (!allowDowngrade && floor != null && total < floor) {
+      myTotalNotifier.value = floor;
+      writeCachedTotalScore(floor);
       return;
     }
+
     myTotalNotifier.value = total;
     writeCachedTotalScore(total);
   }
@@ -421,18 +428,18 @@ class ScoreService {
           unawaited(_repairMissingDoc(user, id, cached));
           return cached;
         }
-        _publishTotal(0, allowDowngradeToZero: true);
+        _publishTotal(0, allowDowngrade: true);
         return 0;
       }
       final data = snap.data()!;
       // Lazy 12h roll: archive previous window, then show 0 until next run.
       if (_needsTournamentRoll(data)) {
         unawaited(_archiveAndResetStaleScore(user: user, playerId: id, data: data));
-        _publishTotal(0, allowDowngradeToZero: true);
+        _publishTotal(0, allowDowngrade: true);
         return 0;
       }
       final total = _effectiveTotalFromData(data);
-      _publishTotal(total, allowDowngradeToZero: true);
+      _publishTotal(total);
       return total;
     } catch (e) {
       debugPrint('[ScoreService] fetchMyTotalScore failed: $e');
@@ -558,18 +565,21 @@ class ScoreService {
 
         if (!snap.exists) {
           final tFields = _tournamentFields(null, runScore, now);
+          // Prefer local optimistic floor if auth raced ahead of a prior write.
+          final local = readCachedTotalScore();
+          final seed = (local != null && local > runScore) ? local : runScore;
           tx.set(ref, {
             'playerId': id,
             'authUid': authUid,
             'uid': id,
             'displayName': display,
-            'totalScore': runScore,
+            'totalScore': seed,
             'cycleStartDate': Timestamp.fromDate(windowStart),
             'updatedAt': FieldValue.serverTimestamp(),
             'lastRunScore': runScore,
             ...tFields,
           });
-          return runScore;
+          return seed;
         }
 
         final data = snap.data()!;
@@ -579,12 +589,22 @@ class ScoreService {
 
         var total = (data['totalScore'] as num?)?.toInt() ?? 0;
         final prevCycle = data['tournamentCycleId']?.toString() ?? '';
-        if (prevCycle != cycleId) {
+        final rolled = prevCycle != cycleId;
+        if (rolled) {
           // New daily window — both competition scores start fresh.
           total = 0;
         }
 
-        final accumulated = total + runScore;
+        var accumulated = total + runScore;
+        if (!rolled) {
+          // Local cache may already hold optimistic base+run (or a prior
+          // submit the server hasn't reflected yet) — never write a lower sum.
+          final local = readCachedTotalScore();
+          if (local != null && local > accumulated) {
+            accumulated = local;
+          }
+        }
+
         final tFields = _tournamentFields(data, runScore, now);
         tx.set(ref, {
           'playerId': id,
@@ -602,6 +622,8 @@ class ScoreService {
 
       // ignore: avoid_print
       print('[Score] UPLOADED playerId=$id run=+$runScore → totalScore=$nextTotal');
+      // Cycle resets are the only intentional downward publish (handled when
+      // fetch sees a roll). Submit path never flashes the HUD downward.
       _publishTotal(nextTotal);
       unawaited(refreshClaimEligibility());
       return nextTotal;
