@@ -11,6 +11,7 @@ import '../components/player.dart';
 import '../platform/device_type.dart';
 import '../platform/fullscreen.dart';
 import 'game_audio.dart';
+import 'config.dart';
 import 'layout_config.dart';
 import '../services/score_service.dart';
 
@@ -33,6 +34,18 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   double _footerRightMostX = 0;
   final double _footerScrollSpeed = 140;
   double _footerY = 0;
+
+  /// Seamless grass strip just above the wood footer (scrolls with bamboo).
+  Sprite? _grassSprite;
+  final List<SpriteComponent> _grassTiles = [];
+  double _grassTileWidth = 0;
+  double _grassRightMostX = 0;
+
+  /// Seamless water strip behind grass (same scroll pattern).
+  Sprite? _waterSprite;
+  final List<SpriteComponent> _waterTiles = [];
+  double _waterTileWidth = 0;
+  double _waterRightMostX = 0;
 
   int _score = 0;
   final ValueNotifier<int> scoreNotifier = ValueNotifier<int>(0);
@@ -82,6 +95,8 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   /// Minimum art for Tap-to-Play + first bamboo pair (rest loads after).
   static const _bootAssets = [
     'character/background.png',
+    'character/background2.png',
+    'character/water.png',
     'character/background/roted.png',
     'character/5-character.png',
     'character/out/1-out.png',
@@ -117,6 +132,16 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     final footerImage = images.fromCache('character/background/roted.png');
     _footerSprite = Sprite(footerImage);
     _buildFooterLoop(_worldSize);
+
+    // ================= GRASS STRIP (just above wood / bamboo base) =================
+    final grassImage = images.fromCache('character/background2.png');
+    _grassSprite = Sprite(grassImage);
+    _buildGrassLoop(_worldSize);
+
+    // ================= WATER STRIP (behind grass, same scroll style) =================
+    final waterImage = images.fromCache('character/water.png');
+    _waterSprite = Sprite(waterImage);
+    _buildWaterLoop(_worldSize);
 
     // ================= PLAYER =================
     final player = Player();
@@ -262,11 +287,88 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         size: Vector2(_footerTileWidth, footerHeight),
       );
       tile.opacity = 0.5; // 50% visible
-      tile.priority = -10; // behind bamboo/obstacles
+      // In front of bamboo so stalks sit "behind" the ground/fence line.
+      tile.priority = 21;
       _footerTiles.add(tile);
       add(tile);
     }
     _footerRightMostX = (tileCount - 1) * _footerTileWidth;
+  }
+
+  void _buildGrassLoop(Vector2 gameSize) {
+    final sprite = _grassSprite;
+    if (sprite == null) return;
+    if (_grassTiles.isNotEmpty) return;
+    // Footer must exist so we can sit just above it.
+    if (_footerTiles.isEmpty) return;
+
+    final grassHeight = LayoutConfig.heightOf(
+      LayoutConfig.grassHeightPx / LayoutConfig.referenceHeight,
+      gameSize.y,
+    );
+    final image = sprite.image;
+    final scale = grassHeight / image.height;
+    _grassTileWidth = image.width * scale;
+
+    // Screen-bottom plant line: grass sits at the last row of the screen
+    // (where bottom bamboo exits). Offset from LayoutConfig for manual tweak.
+    final yOffset = LayoutConfig.heightOf(
+      LayoutConfig.grassYOffsetPx / LayoutConfig.referenceHeight,
+      gameSize.y,
+    );
+    // Flush to bottom, then lift by yOffset so ~2% can tuck bamboo if desired.
+    final grassY = gameSize.y - grassHeight - yOffset;
+
+    final tileCount = (gameSize.x / _grassTileWidth).ceil() + 2;
+    for (int i = 0; i < tileCount; i++) {
+      final tile = SpriteComponent(
+        sprite: sprite,
+        anchor: Anchor.topLeft,
+        position: Vector2(i * _grassTileWidth, grassY),
+        size: Vector2(_grassTileWidth, grassHeight),
+      );
+      // Draw above bamboo so stalks look embedded in the grass.
+      tile.priority = 20;
+      _grassTiles.add(tile);
+      add(tile);
+    }
+    _grassRightMostX = (tileCount - 1) * _grassTileWidth;
+  }
+
+  void _buildWaterLoop(Vector2 gameSize) {
+    final sprite = _waterSprite;
+    if (sprite == null) return;
+    if (_waterTiles.isNotEmpty) return;
+    if (_footerTiles.isEmpty) return;
+
+    final waterHeight = LayoutConfig.heightOf(
+      LayoutConfig.waterHeightPx / LayoutConfig.referenceHeight,
+      gameSize.y,
+    );
+    final image = sprite.image;
+    final scale = waterHeight / image.height;
+    _waterTileWidth = image.width * scale;
+
+    final yOffset = LayoutConfig.heightOf(
+      LayoutConfig.waterYOffsetPx / LayoutConfig.referenceHeight,
+      gameSize.y,
+    );
+    final waterY = gameSize.y - waterHeight - yOffset;
+
+    final tileCount = (gameSize.x / _waterTileWidth).ceil() + 2;
+    for (int i = 0; i < tileCount; i++) {
+      final tile = SpriteComponent(
+        sprite: sprite,
+        anchor: Anchor.topLeft,
+        position: Vector2(i * _waterTileWidth, waterY),
+        size: Vector2(_waterTileWidth, waterHeight),
+      );
+      // Behind grass (20), still in front of bamboo (0).
+      tile.priority = 19;
+      _waterTiles.add(tile);
+      add(tile);
+    }
+    _waterRightMostX = (tileCount - 1) * _waterTileWidth;
   }
 
   @override
@@ -278,6 +380,8 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     _fitBackground(_worldSize);
     // Footer is fixed-world — skip rebuild (was destroying/recreating tiles).
     _buildFooterLoop(_worldSize);
+    _buildGrassLoop(_worldSize);
+    _buildWaterLoop(_worldSize);
 
     final p = _player;
     if (p != null && p.isMounted) {
@@ -305,6 +409,40 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
         if (tile.x + width < 0) {
           tile.x = _footerRightMostX + width;
           _footerRightMostX = tile.x;
+        }
+      }
+    }
+
+    // Grass strip: exact bamboo px/s so it never desyncs from stalks.
+    if (_state == GameState.playing && _grassTiles.isNotEmpty) {
+      final grassMove =
+          GameConfig.obstacleSpeed * (_obstacles?.speedScale ?? 1.0) * dt;
+      final gWidth = _grassTileWidth;
+      for (final tile in _grassTiles) {
+        tile.x -= grassMove;
+      }
+      _grassRightMostX -= grassMove;
+      for (final tile in _grassTiles) {
+        if (tile.x + gWidth < 0) {
+          tile.x = _grassRightMostX + gWidth;
+          _grassRightMostX = tile.x;
+        }
+      }
+    }
+
+    // Water strip: same seamless bamboo-locked scroll as grass.
+    if (_state == GameState.playing && _waterTiles.isNotEmpty) {
+      final waterMove =
+          GameConfig.obstacleSpeed * (_obstacles?.speedScale ?? 1.0) * dt;
+      final wWidth = _waterTileWidth;
+      for (final tile in _waterTiles) {
+        tile.x -= waterMove;
+      }
+      _waterRightMostX -= waterMove;
+      for (final tile in _waterTiles) {
+        if (tile.x + wWidth < 0) {
+          tile.x = _waterRightMostX + wWidth;
+          _waterRightMostX = tile.x;
         }
       }
     }

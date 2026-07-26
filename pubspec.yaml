@@ -65,6 +65,8 @@ flutter:
     - assets/images/character/4-character.png
     - assets/images/character/5-character.png
     - assets/images/character/background.png
+    - assets/images/character/background2.png
+    - assets/images/character/water.png
     - assets/images/character/background/roted.png
     - assets/images/character/out/1-out.png
     - assets/images/character/out/2-out.png

@@ -59,6 +59,31 @@ class LayoutConfig {
   static const double footerScaleMultiplier = 1.25;
   static const double footerVerticalInsetFactor = 0.15;
 
+  // ---------------------------------------------------------------------------
+  // Grass strip (background2.png) — sits at screen bottom, in front of bamboo
+  // ---------------------------------------------------------------------------
+
+  /// Grass band thickness (reference px). Bigger = taller grass strip.
+  static const double grassHeightPx = 40;
+
+  /// MANUAL up/down for grass (reference px):
+  /// - Increase (+) → grass moves UP (covers more bamboo)
+  /// - Decrease (-) → grass moves DOWN (toward screen bottom edge)
+  /// Start at 0 = grass bottom flush with screen bottom.
+  static const double grassYOffsetPx = -24;
+
+  // ---------------------------------------------------------------------------
+  // Water strip (water.png) — same pattern as grass, drawn behind grass
+  // ---------------------------------------------------------------------------
+
+  /// Water band thickness (reference px). Bigger = taller water strip.
+  static const double waterHeightPx = 150;
+
+  /// MANUAL up/down for water (reference px):
+  /// - Increase (+) → water moves UP
+  /// - Decrease (-) → water moves DOWN (toward screen bottom edge)
+  static const double waterYOffsetPx = -0;
+
   /// Converts a normalized height slice into pixels for the active game size.
   static double heightOf(double factor, double screenHeight) =>
       factor * screenHeight;

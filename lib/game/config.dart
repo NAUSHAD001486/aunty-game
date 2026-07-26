@@ -36,10 +36,10 @@ class GameConfig {
   /// =======================
 
   /// Horizontal speed of obstacles at start (px/s).
-  static const double obstacleSpeed = 220.0;
+  static const double obstacleSpeed = 260.0;
 
   /// Soft cap — late game stays playable.
-  static const double obstacleSpeedMax = 360.0;
+  static const double obstacleSpeedMax = 300.0;
 
   /// Bump on score 2, 4, 6, … (every N points).
   static const int speedBumpEveryScore = 1;
