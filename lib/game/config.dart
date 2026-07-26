@@ -36,7 +36,7 @@ class GameConfig {
   /// =======================
 
   /// Horizontal speed of obstacles at start (px/s).
-  static const double obstacleSpeed = 260.0;
+  static const double obstacleSpeed = 268.0;
 
   /// Soft cap — late game stays playable.
   static const double obstacleSpeedMax = 300.0;
@@ -46,7 +46,7 @@ class GameConfig {
 
   /// Each bump adds this much (your **1.5**).
   /// In-game: +15 px/s per bump (`1.5 × 10`) so it feels clear but smooth.
-  static const double speedBumpAmount = 2.0;
+  static const double speedBumpAmount = 2.2;
 
   /// Spawn interval (seconds)
   static const double obstacleSpawnInterval = 1.6;

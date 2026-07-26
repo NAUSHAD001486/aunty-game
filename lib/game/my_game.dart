@@ -28,14 +28,8 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   ObstacleManager? _obstacles;
 
   SpriteComponent? _background;
-  Sprite? _footerSprite;
-  final List<SpriteComponent> _footerTiles = [];
-  double _footerTileWidth = 0;
-  double _footerRightMostX = 0;
-  final double _footerScrollSpeed = 140;
-  double _footerY = 0;
 
-  /// Seamless grass strip just above the wood footer (scrolls with bamboo).
+  /// Seamless grass strip at screen bottom (scrolls with bamboo).
   Sprite? _grassSprite;
   final List<SpriteComponent> _grassTiles = [];
   double _grassTileWidth = 0;
@@ -97,7 +91,6 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     'character/background.png',
     'character/background2.png',
     'character/water.png',
-    'character/background/roted.png',
     'character/5-character.png',
     'character/out/1-out.png',
   ];
@@ -128,12 +121,7 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     add(_background!);
     _fitBackground(_worldSize);
 
-    // ================= FOOTER LOOP (ROTED WOOD RING) =================
-    final footerImage = images.fromCache('character/background/roted.png');
-    _footerSprite = Sprite(footerImage);
-    _buildFooterLoop(_worldSize);
-
-    // ================= GRASS STRIP (just above wood / bamboo base) =================
+    // ================= GRASS STRIP (screen bottom / bamboo base) =================
     final grassImage = images.fromCache('character/background2.png');
     _grassSprite = Sprite(grassImage);
     _buildGrassLoop(_worldSize);
@@ -260,47 +248,10 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     _background!.position = gameSize / 2;
   }
 
-  void _buildFooterLoop(Vector2 gameSize) {
-    final sprite = _footerSprite;
-    if (sprite == null) return;
-
-    // World size is fixed — never thrash tiles on browser chrome resize.
-    if (_footerTiles.isNotEmpty) return;
-
-    final footerHeight = LayoutConfig.heightOf(
-      LayoutConfig.footerBaseHeightFactor * LayoutConfig.footerScaleMultiplier,
-      gameSize.y,
-    );
-    final image = sprite.image;
-    final scale = footerHeight / image.height;
-    _footerTileWidth = image.width * scale;
-    _footerY = gameSize.y -
-        footerHeight +
-        (footerHeight * LayoutConfig.footerVerticalInsetFactor);
-
-    final tileCount = (gameSize.x / _footerTileWidth).ceil() + 2;
-    for (int i = 0; i < tileCount; i++) {
-      final tile = SpriteComponent(
-        sprite: sprite,
-        anchor: Anchor.topLeft,
-        position: Vector2(i * _footerTileWidth, _footerY),
-        size: Vector2(_footerTileWidth, footerHeight),
-      );
-      tile.opacity = 0.5; // 50% visible
-      // In front of bamboo so stalks sit "behind" the ground/fence line.
-      tile.priority = 21;
-      _footerTiles.add(tile);
-      add(tile);
-    }
-    _footerRightMostX = (tileCount - 1) * _footerTileWidth;
-  }
-
   void _buildGrassLoop(Vector2 gameSize) {
     final sprite = _grassSprite;
     if (sprite == null) return;
     if (_grassTiles.isNotEmpty) return;
-    // Footer must exist so we can sit just above it.
-    if (_footerTiles.isEmpty) return;
 
     final grassHeight = LayoutConfig.heightOf(
       LayoutConfig.grassHeightPx / LayoutConfig.referenceHeight,
@@ -339,7 +290,6 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     final sprite = _waterSprite;
     if (sprite == null) return;
     if (_waterTiles.isNotEmpty) return;
-    if (_footerTiles.isEmpty) return;
 
     final waterHeight = LayoutConfig.heightOf(
       LayoutConfig.waterHeightPx / LayoutConfig.referenceHeight,
@@ -378,8 +328,6 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
     _lockViewportToReference();
 
     _fitBackground(_worldSize);
-    // Footer is fixed-world — skip rebuild (was destroying/recreating tiles).
-    _buildFooterLoop(_worldSize);
     _buildGrassLoop(_worldSize);
     _buildWaterLoop(_worldSize);
 
@@ -395,23 +343,6 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   void update(double dt) {
     // Cap large frame spikes (tab switch / GC) so physics don't teleport.
     if (dt > 1 / 30) dt = 1 / 30;
-
-    if (_state == GameState.playing && _footerTiles.isNotEmpty) {
-      // Keep ground scroll matched to bamboo speed so the world feels one piece.
-      final move =
-          _footerScrollSpeed * (_obstacles?.speedScale ?? 1.0) * dt;
-      final width = _footerTileWidth;
-      for (final tile in _footerTiles) {
-        tile.x -= move;
-      }
-      _footerRightMostX -= move;
-      for (final tile in _footerTiles) {
-        if (tile.x + width < 0) {
-          tile.x = _footerRightMostX + width;
-          _footerRightMostX = tile.x;
-        }
-      }
-    }
 
     // Grass strip: exact bamboo px/s so it never desyncs from stalks.
     if (_state == GameState.playing && _grassTiles.isNotEmpty) {
