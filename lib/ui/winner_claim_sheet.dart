@@ -182,38 +182,40 @@ Player Firestore ID: $playerId
     });
 
     try {
-      final telegramOk = await _sendPhotoToTelegram(
-        fullName: _nameCtrl.text.trim(),
-        bytes: bytes,
-        fileName: _photoFileName,
-      );
-      if (!telegramOk) {
-        if (!mounted) return;
-        setState(() {
-          _submitting = false;
-          _error = (_photoBytes != null && _photoBytes!.length > 3_000_000)
-              ? 'Photo is too large. Please choose a smaller image.'
-              : 'Could not send photo. Check internet and try again.';
-        });
-        return;
-      }
-
+      // Firestore claim first — Telegram only after a successful write.
+      // (Previously Telegram ran first, so admins saw photos while the player
+      // got a submit error from permission-denied / uid mismatch.)
       final result = await ScoreService.instance.submitWinnerClaim(
         fullName: _nameCtrl.text,
         photoLiveConsent: true,
       );
 
       if (!mounted) return;
-      if (result.isSuccess) {
-        Navigator.of(context).pop(true);
+      if (!result.isSuccess) {
+        setState(() {
+          _submitting = false;
+          _error = result.isAlreadySubmitted
+              ? WinnerClaimSubmitResult.alreadySubmittedMessage
+              : 'Could not submit claim. Try again in a moment.';
+        });
         return;
       }
-      setState(() {
-        _submitting = false;
-        _error = result.isAlreadySubmitted
-            ? WinnerClaimSubmitResult.alreadySubmittedMessage
-            : 'Could not submit claim. Try again in a moment.';
-      });
+
+      final telegramOk = await _sendPhotoToTelegram(
+        fullName: _nameCtrl.text.trim(),
+        bytes: bytes,
+        fileName: _photoFileName,
+      );
+      if (!telegramOk) {
+        // Claim is already saved — still close as success; photo can be resent.
+        debugPrint(
+          '[ClaimUI] claim saved but Telegram photo failed '
+          '(photoBytes=${bytes.length})',
+        );
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
     } catch (e) {
       debugPrint('[ClaimUI] submit failed: $e');
       if (!mounted) return;

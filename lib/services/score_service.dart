@@ -864,16 +864,19 @@ class ScoreService {
   /// Reads winner id from `game_metadata/confirmed_winner` — field **`uid` only**.
   static String? confirmedUidFromData(Map<String, dynamic>? docData) {
     if (docData == null) return null;
-    final confirmedUid = docData['uid'] as String?;
-    final t = confirmedUid?.trim();
-    if (t == null || t.isEmpty) return null;
+    final raw = docData['uid'];
+    if (raw == null) return null;
+    final t = raw.toString().trim();
+    if (t.isEmpty) return null;
     return t;
   }
 
   /// Latest `confirmed_winner.uid` from Firestore (live admin edits).
   Future<String?> readConfirmedWinnerUid() async {
     try {
-      final snap = await _confirmedWinnerRef.get();
+      final snap = await _confirmedWinnerRef.get(
+        const GetOptions(source: Source.server),
+      );
       return confirmedUidFromData(snap.data());
     } catch (e) {
       // ignore: avoid_print
@@ -985,21 +988,24 @@ class ScoreService {
     );
   }
 
-  /// Returns whether a claim doc exists. `null` = unknown (should not hide UI).
+  /// Returns whether a claim doc exists. `null` = unknown (do not show claim UI).
   ///
-  /// Old Firestore rules denied get on missing docs (`resource == null`), which
-  /// threw permission-denied and permanently hid the claim button. Treat that
-  /// as "no claim yet" so the winner UI still works until rules are redeployed.
+  /// Only call after confirming this [claimId] equals server `confirmed_winner.uid`.
+  /// permission-denied on a missing doc for the real winner usually means rules
+  /// still need deploy — treat as "no claim yet". For anyone else, the caller
+  /// must have already failed the uid match and never reach here.
   Future<bool?> _claimDocExists(String claimId) async {
     try {
-      final snap = await _claimRef(claimId).get();
+      final snap = await _claimRef(claimId).get(
+        const GetOptions(source: Source.server),
+      );
       return snap.exists;
     } on FirebaseException catch (e) {
       if (e.code == 'permission-denied') {
         // ignore: avoid_print
         print(
           '[Claim] winners_claims/$claimId get permission-denied '
-          '(treat as no claim — deploy updated firestore.rules)',
+          '(treat as no claim — only valid after uid match)',
         );
         return false;
       }
@@ -1020,6 +1026,9 @@ class ScoreService {
   }
 
   /// Prefer Firestore `claimExpiresAt` / `announcedAt+12h`, else first-seen+12h.
+  ///
+  /// Call only after a **server** read confirmed `uid` match — never invent a
+  /// window from stale cache alone.
   Future<DateTime> _resolveClaimDeadline({
     required String confirmedUid,
     required Map<String, dynamic>? confirmedData,
@@ -1079,12 +1088,17 @@ class ScoreService {
 
   /// Match: stable users_scores id == confirmed_winner.`uid`
   /// AND winners_claims/{id} does not exist.
+  ///
+  /// Always reads `confirmed_winner` from the **server** so a stale IndexedDB
+  /// cache cannot open the claim form before the real announcement.
   Future<void> _recomputeClaimEligibility({required String playerId}) async {
     try {
       final me = playerId.trim();
 
       // Public metadata first — never blocked by winners_claims rules.
-      final confirmed = await _confirmedWinnerRef.get();
+      final confirmed = await _confirmedWinnerRef.get(
+        const GetOptions(source: Source.server),
+      );
       final winnerId = confirmedUidFromData(confirmed.data()) ?? '';
 
       if (winnerId.isEmpty) {
@@ -1148,11 +1162,11 @@ class ScoreService {
       canClaimPrizeNotifier.value = true;
       claimEligibilityReadyNotifier.value = true;
     } catch (e) {
+      // Never keep a stale true from cache / prior cycle.
       // ignore: avoid_print
-      print(
-        '[Claim] eligibility error (keeping previous '
-        'canClaim=${canClaimPrizeNotifier.value}): $e',
-      );
+      print('[Claim] eligibility error — HIDE (was canClaim='
+          '${canClaimPrizeNotifier.value}): $e');
+      canClaimPrizeNotifier.value = false;
       claimEligibilityReadyNotifier.value = true;
     }
   }
@@ -1191,6 +1205,7 @@ class ScoreService {
     } catch (e) {
       // ignore: avoid_print
       print('[Claim] refreshClaimEligibility failed: $e');
+      canClaimPrizeNotifier.value = false;
       claimEligibilityReadyNotifier.value = true;
     }
   }
@@ -1213,11 +1228,20 @@ class ScoreService {
 
     try {
       final user = await ensureSignedIn();
-      final me = stableScoreDocId ?? user.uid;
+      // Must match confirmed_winner.uid (= users_scores doc id). Never fall back
+      // to Firebase Auth uid — that caused permission-denied after Telegram OK.
+      final me = stableScoreDocId?.trim();
+      if (me == null || me.isEmpty) {
+        // ignore: avoid_print
+        print('[Claim] submit blocked — stableScoreDocId missing');
+        return WinnerClaimSubmitResult.failed;
+      }
       final ref = _claimRef(me);
       _ensureClaimWatches(me);
 
-      final confirmed = await _confirmedWinnerRef.get();
+      final confirmed = await _confirmedWinnerRef.get(
+        const GetOptions(source: Source.server),
+      );
       final winnerId = confirmedUidFromData(confirmed.data()) ?? '';
       if (winnerId.isEmpty || winnerId != me) {
         // ignore: avoid_print
@@ -1264,6 +1288,13 @@ class ScoreService {
       // ignore: avoid_print
       print('[Claim] submit OK claimId=$me (contact-only payload)');
       return WinnerClaimSubmitResult.success;
+    } on FirebaseException catch (e, st) {
+      debugPrint(
+        '[ScoreService] submitWinnerClaim FirebaseException '
+        'code=${e.code} message=${e.message}',
+      );
+      debugPrint('$st');
+      return WinnerClaimSubmitResult.failed;
     } catch (e, st) {
       debugPrint('[ScoreService] submitWinnerClaim failed: $e');
       debugPrint('$st');
