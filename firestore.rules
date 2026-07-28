@@ -78,7 +78,7 @@ service cloud.firestore {
           || (
             request.resource.data.instagramId is string
             && request.resource.data.instagramId.size() > 0
-            && request.resource.data.instagramId.size() <= 64
+            && request.resource.data.instagramId.size() <= 500
           )
         )
         && !('totalScore' in request.resource.data)

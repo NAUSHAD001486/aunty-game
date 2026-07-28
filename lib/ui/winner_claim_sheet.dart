@@ -135,10 +135,13 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
   }) async {
     final playerId = ScoreService.instance.playerId ?? '';
     final ig = (instagramId ?? '').trim();
+    final igLine = ig.isEmpty
+        ? ''
+        : (ig.startsWith('http') ? 'Instagram: $ig\n' : 'Instagram: @$ig\n');
     final caption = '''
 🔔 NEW TOURNAMENT WINNER CLAIM
 Name: $fullName
-${ig.isEmpty ? '' : 'Instagram: @$ig\n'}Photo live consent: YES
+${igLine}Photo live consent: YES
 Player Firestore ID: $playerId
 '''.trim();
 
@@ -359,7 +362,7 @@ Player Firestore ID: $playerId
                     _field(
                       controller: _instagramCtrl,
                       label: 'Instagram (optional)',
-                      hint: '@your_handle',
+                      hint: '@handle or profile/reels link',
                       textInputAction: TextInputAction.done,
                       // Optional — empty is fine; light sanity check only.
                       validator: (v) {
@@ -367,10 +370,10 @@ Player Firestore ID: $playerId
                         if (t.isEmpty) return null;
                         final id = _normalizeInstagramId(t);
                         if (id == null || id.isEmpty) {
-                          return 'Enter a valid Instagram username';
+                          return 'Enter a username or Instagram link';
                         }
-                        if (id.length > 30) {
-                          return 'Instagram username is too long';
+                        if (id.length > 500) {
+                          return 'Instagram link is too long';
                         }
                         return null;
                       },
@@ -532,15 +535,44 @@ Player Firestore ID: $playerId
     );
   }
 
-  /// Empty → null. Strips leading @ and URL prefixes; keeps handle only.
+  /// Empty → null.
+  /// - Full Instagram URL (profile / reel / post) → store cleaned full link.
+  /// - Bare @username → store username only (no @).
   static String? _normalizeInstagramId(String raw) {
     var t = raw.trim();
     if (t.isEmpty) return null;
-    t = t.replaceFirst(RegExp(r'^https?://(www\.)?instagram\.com/', caseSensitive: false), '');
-    t = t.split(RegExp(r'[/?#]')).first.trim();
-    if (t.startsWith('@')) t = t.substring(1).trim();
-    if (t.isEmpty) return null;
-    return t;
+
+    // Username only (@optional).
+    if (!t.contains('/') && !t.toLowerCase().contains('instagram.com')) {
+      if (t.startsWith('@')) t = t.substring(1).trim();
+      if (t.isEmpty) return null;
+      return t;
+    }
+
+    // Pasteable link — keep the full URL so reels/posts are not collapsed
+    // to path segments like "reel".
+    if (!t.startsWith('http://') && !t.startsWith('https://')) {
+      t = 'https://$t';
+    }
+    final uri = Uri.tryParse(t);
+    if (uri == null || uri.host.isEmpty) return null;
+    final host = uri.host.toLowerCase();
+    if (host != 'instagram.com' && host != 'www.instagram.com') {
+      // Non-Instagram URL — still keep as trimmed original if it looked like a link.
+      return t.length > 500 ? t.substring(0, 500) : t;
+    }
+
+    // Drop tracking query/fragment; keep path (profile, /reel/…, /p/…).
+    final cleaned = Uri(
+      scheme: 'https',
+      host: 'www.instagram.com',
+      path: uri.path.isEmpty ? '/' : uri.path,
+    ).toString();
+    // Prefer no trailing slash except root.
+    final out = (cleaned.length > 1 && cleaned.endsWith('/'))
+        ? cleaned.substring(0, cleaned.length - 1)
+        : cleaned;
+    return out.isEmpty ? null : out;
   }
 
   Widget _field({
