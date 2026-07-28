@@ -45,6 +45,7 @@ class WinnerClaimSheet extends StatefulWidget {
 class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
+  final _instagramCtrl = TextEditingController();
 
   Uint8List? _photoBytes;
   String _photoFileName = 'winner_claim.jpg';
@@ -55,6 +56,7 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _instagramCtrl.dispose();
     super.dispose();
   }
 
@@ -84,12 +86,14 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
     required String fullName,
     required Uint8List bytes,
     required String fileName,
+    String? instagramId,
   }) async {
     final playerId = ScoreService.instance.playerId ?? '';
+    final ig = (instagramId ?? '').trim();
     final caption = '''
 🔔 NEW TOURNAMENT WINNER CLAIM
 Name: $fullName
-Photo live consent: YES
+${ig.isEmpty ? '' : 'Instagram: @$ig\n'}Photo live consent: YES
 Player Firestore ID: $playerId
 '''.trim();
 
@@ -185,9 +189,11 @@ Player Firestore ID: $playerId
       // Firestore claim first — Telegram only after a successful write.
       // (Previously Telegram ran first, so admins saw photos while the player
       // got a submit error from permission-denied / uid mismatch.)
+      final instagramId = _normalizeInstagramId(_instagramCtrl.text);
       final result = await ScoreService.instance.submitWinnerClaim(
         fullName: _nameCtrl.text,
         photoLiveConsent: true,
+        instagramId: instagramId,
       );
 
       if (!mounted) return;
@@ -205,6 +211,7 @@ Player Firestore ID: $playerId
         fullName: _nameCtrl.text.trim(),
         bytes: bytes,
         fileName: _photoFileName,
+        instagramId: instagramId,
       );
       if (!telegramOk) {
         // Claim is already saved — still close as success; photo can be resent.
@@ -298,10 +305,30 @@ Player Firestore ID: $playerId
                       controller: _nameCtrl,
                       label: 'Full Name',
                       hint: 'Your display name',
-                      textInputAction: TextInputAction.done,
+                      textInputAction: TextInputAction.next,
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Name is required'
                           : null,
+                    ),
+                    const SizedBox(height: 14),
+                    _field(
+                      controller: _instagramCtrl,
+                      label: 'Instagram (optional)',
+                      hint: '@your_handle',
+                      textInputAction: TextInputAction.done,
+                      // Optional — empty is fine; light sanity check only.
+                      validator: (v) {
+                        final t = (v ?? '').trim();
+                        if (t.isEmpty) return null;
+                        final id = _normalizeInstagramId(t);
+                        if (id == null || id.isEmpty) {
+                          return 'Enter a valid Instagram username';
+                        }
+                        if (id.length > 30) {
+                          return 'Instagram username is too long';
+                        }
+                        return null;
+                      },
                     ),
                     const SizedBox(height: 14),
                     Center(
@@ -460,6 +487,17 @@ Player Firestore ID: $playerId
         ),
       ),
     );
+  }
+
+  /// Empty → null. Strips leading @ and URL prefixes; keeps handle only.
+  static String? _normalizeInstagramId(String raw) {
+    var t = raw.trim();
+    if (t.isEmpty) return null;
+    t = t.replaceFirst(RegExp(r'^https?://(www\.)?instagram\.com/', caseSensitive: false), '');
+    t = t.split(RegExp(r'[/?#]')).first.trim();
+    if (t.startsWith('@')) t = t.substring(1).trim();
+    if (t.isEmpty) return null;
+    return t;
   }
 
   Widget _field({

@@ -1211,11 +1211,14 @@ class ScoreService {
   }
 
   /// Winner submits name + photo-live consent (keyed by stable score doc id).
+  /// [instagramId] is optional — omit or pass null/empty to skip.
   Future<WinnerClaimSubmitResult> submitWinnerClaim({
     required String fullName,
     required bool photoLiveConsent,
+    String? instagramId,
   }) async {
     final name = fullName.trim();
+    final ig = instagramId?.trim();
 
     if (name.isEmpty || !photoLiveConsent) {
       return WinnerClaimSubmitResult.failed;
@@ -1282,6 +1285,9 @@ class ScoreService {
         'isProcessed': false,
         'createdAt': FieldValue.serverTimestamp(),
       };
+      if (ig != null && ig.isNotEmpty) {
+        payload['instagramId'] = ig;
+      }
       await ref.set(payload);
 
       canClaimPrizeNotifier.value = false;

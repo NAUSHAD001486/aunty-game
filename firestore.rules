@@ -73,6 +73,14 @@ service cloud.firestore {
         && request.resource.data.fullName is string
         && request.resource.data.fullName.size() > 0
         && request.resource.data.photoLiveConsent == true
+        && (
+          !('instagramId' in request.resource.data)
+          || (
+            request.resource.data.instagramId is string
+            && request.resource.data.instagramId.size() > 0
+            && request.resource.data.instagramId.size() <= 64
+          )
+        )
         && !('totalScore' in request.resource.data)
         && !('highScore' in request.resource.data)
         && !('tournamentScore' in request.resource.data)
