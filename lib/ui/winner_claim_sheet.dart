@@ -82,6 +82,51 @@ class _WinnerClaimSheetState extends State<WinnerClaimSheet> {
     }
   }
 
+  Future<void> _showPhotoTerms() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFFFFFBF5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Photo & name terms',
+          style: TextStyle(
+            color: Color(0xFF8B6914),
+            fontWeight: FontWeight.w900,
+            fontSize: 18,
+          ),
+        ),
+        content: const SingleChildScrollView(
+          child: Text(
+            'I give auntypari permission to publish my name and photo on this '
+            'website’s Latest Winner / Champion section. I understand my photo '
+            'will appear live only with this consent, and may remain publicly '
+            'visible until a new champion is announced.',
+            style: TextStyle(
+              color: Color(0xFF3D4550),
+              fontSize: 14,
+              height: 1.45,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text(
+              'Close',
+              style: TextStyle(
+                color: Color(0xFF8B6914),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _sendPhotoToTelegram({
     required String fullName,
     required Uint8List bytes,
@@ -381,60 +426,58 @@ Player Firestore ID: $playerId
                       ),
                     ),
                     const SizedBox(height: 16),
-                    InkWell(
-                      onTap: _submitting
-                          ? null
-                          : () => setState(() {
-                                _photoLiveConsent = !_photoLiveConsent;
-                                if (_photoLiveConsent) _error = null;
-                              }),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.only(top: 2),
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: Checkbox(
-                                value: _photoLiveConsent,
-                                activeColor: const Color(0xFFC9A227),
-                                checkColor: const Color(0xFF2A1F00),
-                                side: const BorderSide(
-                                  color: Color(0xFF8B6914),
-                                  width: 1.6,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Checkbox(
+                            value: _photoLiveConsent,
+                            activeColor: const Color(0xFFC9A227),
+                            checkColor: const Color(0xFF2A1F00),
+                            side: const BorderSide(
+                              color: Color(0xFF8B6914),
+                              width: 1.6,
+                            ),
+                            onChanged: _submitting
+                                ? null
+                                : (v) => setState(() {
+                                      _photoLiveConsent = v ?? false;
+                                      if (_photoLiveConsent) _error = null;
+                                    }),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              const Text(
+                                'I agree to the ',
+                                style: TextStyle(
+                                  color: Color(0xFF3D4550),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
                                 ),
-                                onChanged: _submitting
-                                    ? null
-                                    : (v) => setState(() {
-                                          _photoLiveConsent = v ?? false;
-                                          if (_photoLiveConsent) {
-                                            _error = null;
-                                          }
-                                        }),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              'I give aunty_pari permission to publish my name '
-                              'and photo on this website’s Latest Winner / '
-                              'Champion section. I understand my photo will '
-                              'appear live only with this consent, and may '
-                              'remain publicly visible until a new champion '
-                              'is announced.',
-                              style: TextStyle(
-                                color: Color(0xFF3D4550),
-                                fontSize: 12.5,
-                                height: 1.4,
-                                fontWeight: FontWeight.w500,
+                              GestureDetector(
+                                onTap: _submitting ? null : _showPhotoTerms,
+                                child: const Text(
+                                  'Terms',
+                                  style: TextStyle(
+                                    color: Color(0xFF8B6914),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Color(0xFF8B6914),
+                                  ),
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 10),
