@@ -52,9 +52,15 @@ class HomepagePromoPanel extends StatelessWidget {
   }
 }
 
-/// Privacy link for the Flutter landing footer.
+/// Footer links: About Us + Privacy Policy
 class LandingPrivacyFooter extends StatelessWidget {
   const LandingPrivacyFooter({super.key});
+
+  static const _style = TextStyle(
+    fontSize: 13,
+    letterSpacing: 0.4,
+    fontWeight: FontWeight.w500,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -62,21 +68,30 @@ class LandingPrivacyFooter extends StatelessWidget {
       width: double.infinity,
       color: HomepagePromoPanel.surface,
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-      alignment: Alignment.center,
-      child: TextButton(
-        onPressed: openPrivacyPolicy,
-        style: TextButton.styleFrom(
-          foregroundColor: const Color(0xFF5A6570),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        ),
-        child: const Text(
-          'Privacy Policy',
-          style: TextStyle(
-            fontSize: 13,
-            letterSpacing: 0.4,
-            fontWeight: FontWeight.w500,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          TextButton(
+            onPressed: openAboutUs,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            child: const Text('About Us', style: _style),
           ),
-        ),
+          const Text(
+            '·',
+            style: TextStyle(color: Color(0xFFB0B8C1), fontSize: 14),
+          ),
+          TextButton(
+            onPressed: openPrivacyPolicy,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+            child: const Text('Privacy Policy', style: _style),
+          ),
+        ],
       ),
     );
   }
