@@ -5,3 +5,5 @@ void openAboutUs() {}
 void openHowToPlay() {}
 
 void openTerms() {}
+
+void openBlog() {}

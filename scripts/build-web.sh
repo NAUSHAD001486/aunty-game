@@ -50,6 +50,7 @@ cp "$ROOT/site/privacy.html" "$ROOT/build/web/privacy.html"
 cp "$ROOT/site/about.html"   "$ROOT/build/web/about.html"
 cp "$ROOT/site/how-to-play.html" "$ROOT/build/web/how-to-play.html"
 cp "$ROOT/site/terms.html" "$ROOT/build/web/terms.html"
+cp "$ROOT/site/blog.html" "$ROOT/build/web/blog.html"
 if [[ -f "$ROOT/site/robots.txt" ]]; then
   cp "$ROOT/site/robots.txt" "$ROOT/build/web/robots.txt"
 fi
