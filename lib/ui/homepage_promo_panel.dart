@@ -52,7 +52,7 @@ class HomepagePromoPanel extends StatelessWidget {
   }
 }
 
-/// Footer links: How to Play · About Us · Blog · Privacy · Terms
+/// Footer links: Blog · How to Play · About Us · Privacy · Terms
 class LandingPrivacyFooter extends StatelessWidget {
   const LandingPrivacyFooter({super.key});
 
@@ -78,6 +78,15 @@ class LandingPrivacyFooter extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           TextButton(
+            onPressed: openBlog,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            child: const Text('Blog', style: _style),
+          ),
+          _dot,
+          TextButton(
             onPressed: openHowToPlay,
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFF5A6570),
@@ -93,15 +102,6 @@ class LandingPrivacyFooter extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             ),
             child: const Text('About Us', style: _style),
-          ),
-          _dot,
-          TextButton(
-            onPressed: openBlog,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            ),
-            child: const Text('Blog', style: _style),
           ),
           _dot,
           TextButton(
