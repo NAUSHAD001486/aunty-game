@@ -52,7 +52,7 @@ class HomepagePromoPanel extends StatelessWidget {
   }
 }
 
-/// Footer links: About Us + Privacy Policy
+/// Footer links: How to Play · About Us · Privacy Policy
 class LandingPrivacyFooter extends StatelessWidget {
   const LandingPrivacyFooter({super.key});
 
@@ -62,32 +62,44 @@ class LandingPrivacyFooter extends StatelessWidget {
     fontWeight: FontWeight.w500,
   );
 
+  static const _dot = Text(
+    '·',
+    style: TextStyle(color: Color(0xFFB0B8C1), fontSize: 14),
+  );
+
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       color: HomepagePromoPanel.surface,
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          TextButton(
+            onPressed: openHowToPlay,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            child: const Text('How to Play', style: _style),
+          ),
+          _dot,
           TextButton(
             onPressed: openAboutUs,
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             ),
             child: const Text('About Us', style: _style),
           ),
-          const Text(
-            '·',
-            style: TextStyle(color: Color(0xFFB0B8C1), fontSize: 14),
-          ),
+          _dot,
           TextButton(
             onPressed: openPrivacyPolicy,
             style: TextButton.styleFrom(
               foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             ),
             child: const Text('Privacy Policy', style: _style),
           ),

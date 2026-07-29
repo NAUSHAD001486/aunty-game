@@ -45,9 +45,10 @@ if [[ -z "$REGISTRANT" ]] || ! grep -q 'firebase_core_web' "$REGISTRANT"; then
 fi
 echo "==> Web plugin registrant OK (Firebase included)"
 
-echo "==> Attach legal pages"
+echo "==> Attach legal / info pages"
 cp "$ROOT/site/privacy.html" "$ROOT/build/web/privacy.html"
 cp "$ROOT/site/about.html"   "$ROOT/build/web/about.html"
+cp "$ROOT/site/how-to-play.html" "$ROOT/build/web/how-to-play.html"
 if [[ -f "$ROOT/site/robots.txt" ]]; then
   cp "$ROOT/site/robots.txt" "$ROOT/build/web/robots.txt"
 fi
@@ -55,4 +56,4 @@ if [[ -f "$ROOT/site/sitemap.xml" ]]; then
   cp "$ROOT/site/sitemap.xml" "$ROOT/build/web/sitemap.xml"
 fi
 
-echo "==> Done: build/web (game on / + privacy.html + about.html)"
+echo "==> Done: build/web (game on / + privacy + about + how-to-play)"
