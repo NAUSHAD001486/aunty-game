@@ -29,6 +29,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 1rem;
       padding: 1rem 1.25rem;
       border-bottom: 1px solid var(--line);
     }
@@ -38,6 +39,17 @@
       font-size: 0.92rem;
     }
     .top a:hover { color: #fff; }
+    .back {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .back-arrow {
+      font-size: 1.15rem;
+      line-height: 1;
+    }
     .brand {
       font-weight: 800;
       letter-spacing: 0.08em;
@@ -85,18 +97,26 @@
       justify-content: center;
       gap: 1.25rem;
     }
-    footer a {
+    footer a, footer span {
       color: var(--muted);
       text-decoration: none;
       font-size: 0.92rem;
     }
     footer a:hover { color: #fff; text-decoration: underline; }
+    footer .current {
+      color: #fff;
+      font-weight: 700;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <div class="top">
-    <a class="brand" href="./">Aunty<span>.</span></a>
-    <a href="./">Back to game</a>
+    <a class="back" href="/" aria-label="Back to game">
+      <span class="back-arrow" aria-hidden="true">←</span>
+      Back
+    </a>
+    <a class="brand" href="/">Aunty<span>.</span></a>
   </div>
 
   <main>
@@ -206,9 +226,9 @@
   </main>
 
   <footer>
-    <a href="how-to-play.html">How to Play</a>
-    <a href="about.html">About Us</a>
-    <a href="privacy.html">Privacy Policy</a>
+    <span class="current" aria-current="page">How to Play</span>
+    <a href="/about">About Us</a>
+    <a href="/privacy">Privacy Policy</a>
   </footer>
 </body>
 </html>

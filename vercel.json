@@ -37,7 +37,19 @@
       ]
     },
     {
-      "source": "/privacy.html",
+      "source": "/privacy",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/about",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600" }
+      ]
+    },
+    {
+      "source": "/how-to-play",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600" }
       ]
@@ -45,7 +57,15 @@
   ],
   "redirects": [
     { "source": "/play", "destination": "/", "permanent": true },
-    { "source": "/play/", "destination": "/", "permanent": true }
+    { "source": "/play/", "destination": "/", "permanent": true },
+    { "source": "/privacy.html", "destination": "/privacy", "permanent": true },
+    { "source": "/about.html", "destination": "/about", "permanent": true },
+    { "source": "/how-to-play.html", "destination": "/how-to-play", "permanent": true }
+  ],
+  "rewrites": [
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/about", "destination": "/about.html" },
+    { "source": "/how-to-play", "destination": "/how-to-play.html" }
   ],
   "functions": {
     "api/telegram-send-photo.js": {
