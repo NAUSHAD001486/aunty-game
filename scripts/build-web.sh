@@ -49,6 +49,7 @@ echo "==> Attach legal / info pages"
 cp "$ROOT/site/privacy.html" "$ROOT/build/web/privacy.html"
 cp "$ROOT/site/about.html"   "$ROOT/build/web/about.html"
 cp "$ROOT/site/how-to-play.html" "$ROOT/build/web/how-to-play.html"
+cp "$ROOT/site/terms.html" "$ROOT/build/web/terms.html"
 if [[ -f "$ROOT/site/robots.txt" ]]; then
   cp "$ROOT/site/robots.txt" "$ROOT/build/web/robots.txt"
 fi
@@ -56,4 +57,4 @@ if [[ -f "$ROOT/site/sitemap.xml" ]]; then
   cp "$ROOT/site/sitemap.xml" "$ROOT/build/web/sitemap.xml"
 fi
 
-echo "==> Done: build/web (game on / + privacy + about + how-to-play)"
+echo "==> Done: build/web (game on / + info pages)"

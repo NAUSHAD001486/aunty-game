@@ -11,3 +11,7 @@ void openAboutUs() {
 void openHowToPlay() {
   web.window.location.href = '/how-to-play';
 }
+
+void openTerms() {
+  web.window.location.href = '/terms';
+}

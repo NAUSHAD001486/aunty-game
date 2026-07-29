@@ -52,7 +52,7 @@ class HomepagePromoPanel extends StatelessWidget {
   }
 }
 
-/// Footer links: How to Play · About Us · Privacy Policy
+/// Footer links: How to Play · About Us · Privacy · Terms
 class LandingPrivacyFooter extends StatelessWidget {
   const LandingPrivacyFooter({super.key});
 
@@ -102,6 +102,15 @@ class LandingPrivacyFooter extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             ),
             child: const Text('Privacy Policy', style: _style),
+          ),
+          _dot,
+          TextButton(
+            onPressed: openTerms,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            child: const Text('Terms', style: _style),
           ),
         ],
       ),
