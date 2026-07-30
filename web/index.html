@@ -29,33 +29,18 @@
   <link rel="preload" href="flutter_bootstrap.js" as="script">
   <link rel="preload" as="image" href="assets/assets/images/landing-preview.png">
 
-  <!-- Keep the HTML document title crawlable if Flutter clears it. -->
+  <!-- Keep the HTML document title if Flutter clears it (lightweight — no DOM observers). -->
   <script>
     (function () {
       var T = 'AuntyPari Funny Game Online — Free, No Download';
       function ensureTitle() {
         try {
           if (document.title !== T) document.title = T;
-          var el = document.querySelector('head > title');
-          if (!el) {
-            el = document.createElement('title');
-            document.head.insertBefore(el, document.head.firstChild);
-          }
-          if (el.textContent !== T) el.textContent = T;
         } catch (e) {}
       }
       window.__AUNTY_DOC_TITLE = T;
       window.__auntyEnsureTitle = ensureTitle;
       ensureTitle();
-      if (typeof MutationObserver !== 'undefined') {
-        try {
-          new MutationObserver(ensureTitle).observe(document.documentElement, {
-            childList: true,
-            subtree: true,
-            characterData: true
-          });
-        } catch (e) {}
-      }
       document.addEventListener('DOMContentLoaded', ensureTitle);
       window.addEventListener('load', ensureTitle);
     })();
@@ -872,7 +857,6 @@
       var s = document.createElement('script');
       s.src = 'flutter_bootstrap.js';
       s.async = true;
-      s.defer = true;
       s.onload = function () {
         if (typeof window.__auntyEnsureTitle === 'function') {
           window.__auntyEnsureTitle();
