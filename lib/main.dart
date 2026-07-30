@@ -47,6 +47,8 @@ Future<void> main() async {
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
+      // Keeps <title> in the document for SEO / PageSpeed (empty default clears it).
+      title: 'AuntyPari Funny Game Online — Free, No Download',
       home: _GameRoot(game: game),
     ),
   );

@@ -29,9 +29,13 @@ flutter pub get
 flutter config --enable-web >/dev/null 2>&1 || true
 
 echo "==> Flutter web (site root /)"
+# NOTE: --web-renderer was removed in Flutter 3.22+ (CanvasKit is default).
+# Do NOT pass --no-tree-shake-icons — that inflates the JS/font payload.
+# Vercel already serves Brotli/Gzip; we rely on CDN CanvasKit + O4 + icon shake.
 flutter build web --release \
   --optimization-level=4 \
   --web-resources-cdn \
+  --tree-shake-icons \
   --pwa-strategy=offline-first \
   -o "$ROOT/build/web"
 

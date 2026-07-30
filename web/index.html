@@ -4,6 +4,7 @@
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
+  <title>AuntyPari Funny Game Online — Free, No Download</title>
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="Play AuntyPari online for free — no download, no signup. Control the flying aunty, dodge the bamboo obstacles, and climb the global leaderboard now!">
@@ -18,13 +19,44 @@
 
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>AuntyPari Funny Game Online — Free, No Download</title>
   <link rel="manifest" href="manifest.json">
 
   <link rel="dns-prefetch" href="https://www.gstatic.com">
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="preload" href="flutter_bootstrap.js" as="script">
   <link rel="preload" as="image" href="assets/assets/images/landing-preview.png">
+
+  <!-- Keep the HTML document title crawlable if Flutter clears it. -->
+  <script>
+    (function () {
+      var T = 'AuntyPari Funny Game Online — Free, No Download';
+      function ensureTitle() {
+        try {
+          if (document.title !== T) document.title = T;
+          var el = document.querySelector('head > title');
+          if (!el) {
+            el = document.createElement('title');
+            document.head.insertBefore(el, document.head.firstChild);
+          }
+          if (el.textContent !== T) el.textContent = T;
+        } catch (e) {}
+      }
+      window.__AUNTY_DOC_TITLE = T;
+      window.__auntyEnsureTitle = ensureTitle;
+      ensureTitle();
+      if (typeof MutationObserver !== 'undefined') {
+        try {
+          new MutationObserver(ensureTitle).observe(document.documentElement, {
+            childList: true,
+            subtree: true,
+            characterData: true
+          });
+        } catch (e) {}
+      }
+      document.addEventListener('DOMContentLoaded', ensureTitle);
+      window.addEventListener('load', ensureTitle);
+    })();
+  </script>
 
   <!--
     CRITICAL: sync localStorage parse BEFORE first paint.
@@ -837,6 +869,12 @@
       var s = document.createElement('script');
       s.src = 'flutter_bootstrap.js';
       s.async = true;
+      s.defer = true;
+      s.onload = function () {
+        if (typeof window.__auntyEnsureTitle === 'function') {
+          window.__auntyEnsureTitle();
+        }
+      };
       document.body.appendChild(s);
     })();
   </script>
