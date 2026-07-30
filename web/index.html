@@ -829,6 +829,25 @@
     (async function () {
       var version = window.flutterfire_web_sdk_version || '12.15.0';
       var base = 'https://www.gstatic.com/firebasejs/' + version + '/';
+
+      // Start Flutter immediately — do NOT wait for Firebase CDN or winner REST.
+      // Blocking here was adding multi-second delay before the game engine downloaded.
+      function startFlutter() {
+        if (window.__auntyFlutterBootStarted) return;
+        window.__auntyFlutterBootStarted = true;
+        var s = document.createElement('script');
+        s.src = 'flutter_bootstrap.js';
+        s.async = true;
+        s.onload = function () {
+          if (typeof window.__auntyEnsureTitle === 'function') {
+            window.__auntyEnsureTitle();
+          }
+        };
+        document.body.appendChild(s);
+      }
+      startFlutter();
+
+      // Best-effort Firebase preload in parallel (FlutterFire injects if this fails).
       try {
         var modules = await Promise.all([
           import(base + 'firebase-app.js'),
@@ -843,26 +862,6 @@
       } catch (e) {
         console.warn('[Aunty] Firebase JS preload failed — FlutterFire will inject:', e);
       }
-
-      // Give early winner REST a short head-start so Flutter reads a warm cache.
-      try {
-        if (window.__auntyWinnerReady) {
-          await Promise.race([
-            window.__auntyWinnerReady,
-            new Promise(function (r) { setTimeout(r, 800); })
-          ]);
-        }
-      } catch (e) {}
-
-      var s = document.createElement('script');
-      s.src = 'flutter_bootstrap.js';
-      s.async = true;
-      s.onload = function () {
-        if (typeof window.__auntyEnsureTitle === 'function') {
-          window.__auntyEnsureTitle();
-        }
-      };
-      document.body.appendChild(s);
     })();
   </script>
 </body>
