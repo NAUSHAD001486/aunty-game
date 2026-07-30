@@ -6,18 +6,19 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="description" content="Aunty — free browser game. Dodge bamboo. Keep flying.">
+  <meta name="description" content="Play AuntyPari online for free — no download, no signup. Control the flying aunty, dodge the bamboo obstacles, and climb the global leaderboard now!">
+  <meta name="keywords" content="AuntyPari, AuntyPari funny game, funniest games, fun games to play online, viral game, new fun games, flappy bird alternative">
   <meta name="theme-color" content="#F4F6F8">
 
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Aunty">
+  <meta name="apple-mobile-web-app-title" content="AuntyPari">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>Aunty</title>
+  <title>AuntyPari Funny Game Online — Free, No Download</title>
   <link rel="manifest" href="manifest.json">
 
   <link rel="dns-prefetch" href="https://www.gstatic.com">
@@ -401,6 +402,19 @@
       color: var(--muted);
     }
 
+    /* Crawlable landmarks — kept out of the visual composition. */
+    .seo-landmarks {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     @media (max-width: 520px) {
       #landing-shell { padding: 8px 6px 20px; }
       #landing-shell .play-card {
@@ -701,6 +715,28 @@
     // Failsafe if Flutter is very slow — never trap on the shell forever.
     setTimeout(hideLandingShell, 20000);
   </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "VideoGame",
+    "name": "AuntyPari",
+    "description": "A highly addictive, fun, and casual browser-based arcade game where you control a flying character through tricky bamboo obstacles.",
+    "genre": "Arcade Game",
+    "platform": "Web Browser",
+    "applicationCategory": "Game",
+    "operatingSystem": "Windows, macOS, Android, iOS",
+    "author": {
+      "@type": "Person",
+      "name": "Nausad Alam"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    }
+  }
+  </script>
 </head>
 <body>
   <div id="flutter-host"></div>
@@ -740,6 +776,11 @@
     </section>
 
     <div class="privacy">Privacy Policy</div>
+
+    <section class="seo-landmarks" aria-label="AuntyPari overview">
+      <h1>AuntyPari: The New Funniest Game to Play Online</h1>
+      <h2>Why this Viral Game is the Perfect Flappy Bird Alternative</h2>
+    </section>
   </div>
 
   <!-- Blocking: paint cache instantly, then live Firestore winner (no Flutter wait). -->
