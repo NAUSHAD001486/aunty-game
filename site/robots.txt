@@ -1,4 +1,6 @@
+# Allow all crawlers — AuntyPari public site
 User-agent: *
 Allow: /
 
-Sitemap: /sitemap.xml
+# Full absolute sitemap URL (required by Google)
+Sitemap: https://www.auntypari.com/sitemap.xml
