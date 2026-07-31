@@ -743,11 +743,17 @@ class _HudOverlay extends StatelessWidget {
                     builder: (_, serviceTotal, __) {
                       // Prefer the higher of live service vs session base so a
                       // late Firestore read never flashes the HUD downward.
+                      // Exception: service 0 after daily roll must win (no
+                      // extra notifiers / listeners — display-only).
                       final int? stored;
                       if (serviceTotal != null && sessionTotal != null) {
-                        stored = serviceTotal >= sessionTotal
-                            ? serviceTotal
-                            : sessionTotal;
+                        if (serviceTotal == 0 && sessionTotal > 0) {
+                          stored = 0;
+                        } else {
+                          stored = serviceTotal >= sessionTotal
+                              ? serviceTotal
+                              : sessionTotal;
+                        }
                       } else {
                         stored = serviceTotal ?? sessionTotal;
                       }

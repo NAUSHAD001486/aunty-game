@@ -53,10 +53,6 @@ class ScoreService {
   /// Live Firestore total for this player (0+). Null = not loaded yet.
   final ValueNotifier<int?> myTotalNotifier = ValueNotifier<int?>(null);
 
-  /// Bumps on intentional daily reset (8 PM IST). Game HUD/session must follow
-  /// immediately — otherwise max(session, service) can keep yesterday's total.
-  final ValueNotifier<int> dailyResetEpochNotifier = ValueNotifier<int>(0);
-
   /// True only for the confirmed 12h tournament winner who has not claimed yet.
   final ValueNotifier<bool> canClaimPrizeNotifier = ValueNotifier<bool>(false);
 
@@ -247,9 +243,6 @@ class ScoreService {
 
     myTotalNotifier.value = total;
     writeCachedTotalScore(total);
-    if (allowDowngrade && total == 0) {
-      dailyResetEpochNotifier.value++;
-    }
   }
 
   /// Call from game UI (optimistic totals) so F5 still has the last sum.
