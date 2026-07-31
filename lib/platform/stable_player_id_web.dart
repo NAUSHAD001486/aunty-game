@@ -5,6 +5,7 @@ import 'package:web/web.dart' as web;
 /// Keys must match `web/index.html` `__auntyStore` bootstrap.
 const _playerKey = 'aunty_stable_player_id';
 const _totalKey = 'aunty_cached_total_score';
+const _cycleKey = 'aunty_cached_tournament_cycle';
 
 /// Native JS bridge installed by index.html (most reliable on Flutter web).
 @JS('__auntyStore')
@@ -81,6 +82,25 @@ void writeCachedTotalScore(int total) {
 
   try {
     web.window.localStorage.setItem(_totalKey, raw);
+  } catch (_) {}
+}
+
+/// Last 24h tournament cycle id — used to drop stale HUD totals after 8 PM IST.
+String? readCachedTournamentCycleId() {
+  try {
+    final v = web.window.localStorage.getItem(_cycleKey);
+    if (v == null || v.trim().isEmpty) return null;
+    return v.trim();
+  } catch (_) {
+    return null;
+  }
+}
+
+void writeCachedTournamentCycleId(String cycleId) {
+  final trimmed = cycleId.trim();
+  if (trimmed.isEmpty) return;
+  try {
+    web.window.localStorage.setItem(_cycleKey, trimmed);
   } catch (_) {}
 }
 

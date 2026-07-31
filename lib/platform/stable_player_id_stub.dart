@@ -7,6 +7,10 @@ int? readCachedTotalScore() => null;
 
 void writeCachedTotalScore(int total) {}
 
+String? readCachedTournamentCycleId() => null;
+
+void writeCachedTournamentCycleId(String cycleId) {}
+
 bool? readLocalFlag(String key) => null;
 
 void writeLocalFlag(String key, bool value) {}

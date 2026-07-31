@@ -30,7 +30,8 @@ class ScoreService {
 
   static const String collectionName = 'users_scores';
   static const String claimsCollection = 'winners_claims';
-  /// Full `users_scores` snapshots after each daily roll (kept ~2 days).
+  /// One doc per finished cycle = highest score seen so far (kept ~2 days).
+  /// Doc id = cycleId (not per-player). Easy admin lookup for the winner.
   static const String scoreArchivesCollection = 'score_archives';
   /// Claim form / button stays available this long after winner announce.
   static const int claimWindowHours = 12;
@@ -126,10 +127,19 @@ class ScoreService {
     if (storedPlayer != null && storedPlayer.isNotEmpty) {
       _playerId = storedPlayer;
     }
-    final cached = readCachedTotalScore();
-    if (cached != null) {
-      myTotalNotifier.value = cached;
+    // After 8 PM IST roll, never flash yesterday's cached total on screen.
+    final cycleId = currentTournamentCycleId();
+    final prevCycle = readCachedTournamentCycleId();
+    if (prevCycle != null && prevCycle != cycleId) {
+      myTotalNotifier.value = 0;
+      writeCachedTotalScore(0);
+    } else {
+      final cached = readCachedTotalScore();
+      if (cached != null) {
+        myTotalNotifier.value = cached;
+      }
     }
+    writeCachedTournamentCycleId(cycleId);
 
     try {
       final coreOk = await ensureFirebaseCore();
@@ -436,6 +446,7 @@ class ScoreService {
       if (_needsTournamentRoll(data)) {
         unawaited(_archiveAndResetStaleScore(user: user, playerId: id, data: data));
         _publishTotal(0, allowDowngrade: true);
+        writeCachedTournamentCycleId(currentTournamentCycleId());
         return 0;
       }
       final total = _effectiveTotalFromData(data);
@@ -541,10 +552,12 @@ class ScoreService {
       print('[Score] signed in authUid=$authUid playerId=$id');
 
       // If the daily 8 PM window rolled, archive old scores BEFORE accumulating.
+      var didRoll = false;
       final pre = await ref.get(const GetOptions(source: Source.serverAndCache));
       if (pre.exists) {
         final preData = pre.data()!;
         if (_needsTournamentRoll(preData)) {
+          didRoll = true;
           await _archivePlayerScoreSnapshot(
             playerId: id,
             data: preData,
@@ -622,9 +635,12 @@ class ScoreService {
 
       // ignore: avoid_print
       print('[Score] UPLOADED playerId=$id run=+$runScore → totalScore=$nextTotal');
-      // Cycle resets are the only intentional downward publish (handled when
-      // fetch sees a roll). Submit path never flashes the HUD downward.
-      _publishTotal(nextTotal);
+      // After a cycle roll the HUD must be allowed to drop to the fresh total.
+      // Otherwise localStorage "no-downgrade" keeps showing yesterday's score.
+      _publishTotal(nextTotal, allowDowngrade: didRoll);
+      if (didRoll) {
+        writeCachedTournamentCycleId(currentTournamentCycleId());
+      }
       unawaited(refreshClaimEligibility());
       return nextTotal;
     } catch (e, st) {
@@ -694,7 +710,10 @@ class ScoreService {
   CollectionReference<Map<String, dynamic>> get _scoreArchives =>
       _db.collection(scoreArchivesCollection);
 
-  /// Copy one player's pre-reset scores into `score_archives` (2-day retention).
+  /// Keep at most one archive doc per finished cycle: the highest score seen.
+  ///
+  /// Doc id = [cycleId]. Each rolling player max-upserts; lower scores no-op.
+  /// Other players stay only in `users_scores` (reset to 0 for the new cycle).
   Future<void> _archivePlayerScoreSnapshot({
     required String playerId,
     required Map<String, dynamic> data,
@@ -706,36 +725,41 @@ class ScoreService {
     final tScore = (data['tournamentScore'] as num?)?.toInt() ?? 0;
     if (total <= 0 && tScore <= 0) return;
 
-    final archiveId = '${oldCycle}_$playerId';
-    final ref = _scoreArchives.doc(archiveId);
+    final ref = _scoreArchives.doc(oldCycle);
     try {
-      final existing = await ref.get();
-      if (existing.exists) return;
-
       final expireAt = DateTime.now()
           .toUtc()
           .add(const Duration(days: archiveRetentionDays));
-      await ref.set({
-        'cycleId': oldCycle,
-        'playerId': playerId,
-        'uid': (data['uid'] as String?)?.trim().isNotEmpty == true
-            ? data['uid']
-            : playerId,
-        'authUid': data['authUid'],
-        'displayName': data['displayName'],
-        'totalScore': total,
-        'tournamentScore': tScore,
-        'lastRunScore': (data['lastRunScore'] as num?)?.toInt() ?? 0,
-        'tournamentCycleId': oldCycle,
-        'cycleStartDate': data['cycleStartDate'],
-        'sourceUpdatedAt': data['updatedAt'],
-        'archivedAt': FieldValue.serverTimestamp(),
-        'expireAt': Timestamp.fromDate(expireAt),
+      await _db.runTransaction((tx) async {
+        final existing = await tx.get(ref);
+        if (existing.exists) {
+          final prev = (existing.data()!['totalScore'] as num?)?.toInt() ?? 0;
+          // Strictly higher only — ties keep the first recorded leader.
+          if (total <= prev) return;
+        }
+        tx.set(ref, {
+          'cycleId': oldCycle,
+          'playerId': playerId,
+          'uid': (data['uid'] as String?)?.trim().isNotEmpty == true
+              ? data['uid']
+              : playerId,
+          'authUid': data['authUid'],
+          'displayName': data['displayName'],
+          'totalScore': total,
+          'tournamentScore': tScore,
+          'lastRunScore': (data['lastRunScore'] as num?)?.toInt() ?? 0,
+          'tournamentCycleId': oldCycle,
+          'cycleStartDate': data['cycleStartDate'],
+          'sourceUpdatedAt': data['updatedAt'],
+          'archivedAt': FieldValue.serverTimestamp(),
+          'expireAt': Timestamp.fromDate(expireAt),
+          'isCycleLeader': true,
+        });
       });
       // ignore: avoid_print
-      print('[Score] archived $archiveId total=$total tournament=$tScore');
+      print('[Score] cycle leader archive $oldCycle player=$playerId total=$total');
     } catch (e) {
-      debugPrint('[ScoreService] archive failed ($archiveId): $e');
+      debugPrint('[ScoreService] archive failed ($oldCycle): $e');
     }
   }
 
@@ -770,6 +794,8 @@ class ScoreService {
         SetOptions(merge: true),
       );
       writeCachedTotalScore(0);
+      writeCachedTournamentCycleId(cycleId);
+      myTotalNotifier.value = 0;
       // ignore: avoid_print
       print('[Score] reset playerId=$playerId for cycle=$cycleId');
       unawaited(_purgeExpiredScoreArchives());
