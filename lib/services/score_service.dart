@@ -144,6 +144,7 @@ class ScoreService {
         _prefsInFlight = null;
       }
       _ready = true;
+      _scheduleNextTournamentRoll();
       unawaited(_warmUserProfile());
       // ignore: avoid_print
       print('[ScoreService] Firebase ready — scores + claim can proceed');
@@ -408,7 +409,7 @@ class ScoreService {
     return display;
   }
 
-  /// Current cumulative total (12h tournament window aware, read-only).
+  /// Current cumulative total (daily 8 PM IST window aware, read-only).
   Future<int?> fetchMyTotalScore() async {
     if (!_ready) {
       final ok = await init();
@@ -432,7 +433,7 @@ class ScoreService {
         return 0;
       }
       final data = snap.data()!;
-      // Lazy 12h roll: archive previous window, then show 0 until next run.
+      // Lazy daily roll (8 PM IST): archive previous window, then show 0.
       if (_needsTournamentRoll(data)) {
         unawaited(_archiveAndResetStaleScore(user: user, playerId: id, data: data));
         _publishTotal(0, allowDowngrade: true);
@@ -489,18 +490,29 @@ class ScoreService {
 
   bool _needsTournamentRoll(Map<String, dynamic> data) {
     final cycleId = currentTournamentCycleId();
-    final prev = data['tournamentCycleId']?.toString() ?? '';
+    final prev = data['tournamentCycleId']?.toString().trim() ?? '';
     if (prev.isNotEmpty) return prev != cycleId;
-    // Legacy docs without tournamentCycleId: roll if before current window start.
+
+    // Legacy docs without tournamentCycleId: roll if last activity was before
+    // this 8 PM IST window; otherwise keep score and stamp cycle on next write.
+    final windowStart = currentTournamentWindowStart();
+    DateTime? marker;
     final rawCycle = data['cycleStartDate'];
-    DateTime? cycleStart;
     if (rawCycle is Timestamp) {
-      cycleStart = rawCycle.toDate().toUtc();
+      marker = rawCycle.toDate().toUtc();
     } else if (rawCycle is DateTime) {
-      cycleStart = rawCycle.toUtc();
+      marker = rawCycle.toUtc();
     }
-    if (cycleStart == null) return false;
-    return cycleStart.isBefore(currentTournamentWindowStart());
+    if (marker == null) {
+      final updated = data['updatedAt'];
+      if (updated is Timestamp) {
+        marker = updated.toDate().toUtc();
+      } else if (updated is DateTime) {
+        marker = updated.toUtc();
+      }
+    }
+    if (marker == null) return true;
+    return marker.isBefore(windowStart);
   }
 
   /// READ current `totalScore` → add [runScore] → WRITE sum (never overwrite
@@ -653,9 +665,53 @@ class ScoreService {
 
   // ─── Daily 8 PM IST tournament + prize claim ───────────────────────────
 
+  Timer? _tournamentRollTimer;
+
   /// Stable id for the current daily competition window (resets 8 PM IST).
   static String currentTournamentCycleId([DateTime? now]) {
     return '${currentTournamentWindowStart(now).millisecondsSinceEpoch}';
+  }
+
+  /// Cycle id for the competition window that ended at the last 8 PM IST.
+  /// Use this in Firebase to find yesterday's top scorer / announce winner.
+  static String previousTournamentCycleId([DateTime? now]) {
+    final prevStart = currentTournamentWindowStart(now)
+        .subtract(const Duration(days: 1));
+    return '${prevStart.millisecondsSinceEpoch}';
+  }
+
+  /// Next 8:00 PM IST boundary (UTC), when scores roll to a new day.
+  static DateTime nextTournamentRollAt([DateTime? now]) {
+    return currentTournamentWindowStart(now).add(const Duration(days: 1));
+  }
+
+  /// One-shot timer: at 8 PM IST zero the HUD + refresh Firestore (lazy archive).
+  /// Does not poll — zero gameplay overhead until the boundary fires.
+  void _scheduleNextTournamentRoll() {
+    _tournamentRollTimer?.cancel();
+    final now = DateTime.now().toUtc();
+    var delay = nextTournamentRollAt(now).difference(now);
+    if (delay.isNegative) {
+      delay = const Duration(seconds: 2);
+    }
+    // ignore: avoid_print
+    print(
+      '[Score] next daily reset (8 PM IST) in '
+      '${delay.inMinutes} min (cycle=${currentTournamentCycleId(now)})',
+    );
+    _tournamentRollTimer = Timer(delay + const Duration(seconds: 1), () async {
+      // ignore: avoid_print
+      print('[Score] 8 PM IST boundary hit — rolling local + server totals');
+      _publishTotal(0, allowDowngrade: true);
+      try {
+        if (_ready) {
+          await fetchMyTotalScore();
+        }
+      } catch (e) {
+        debugPrint('[ScoreService] tournament roll refresh failed: $e');
+      }
+      _scheduleNextTournamentRoll();
+    });
   }
 
   Map<String, dynamic> _tournamentFields(
@@ -739,7 +795,7 @@ class ScoreService {
     }
   }
 
-  /// Persist reset to 0 when a stale 12h window is discovered on read.
+  /// Persist reset to 0 when a stale daily window is discovered on read.
   Future<void> _archiveAndResetStaleScore({
     required User user,
     required String playerId,
