@@ -63,6 +63,7 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   final GameAudio _audio = GameAudio();
   bool _notifiersDisposed = false;
   bool _didRequestFullscreen = false;
+  Future<void>? _sessionRefreshInFlight;
 
   /// True after boot assets + world are ready (home gate can start play).
   final ValueNotifier<bool> bootReadyNotifier = ValueNotifier<bool>(false);
@@ -153,36 +154,41 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   }
 
   /// Pull this player's saved total so the live HUD can show run / DB total.
+  /// Single-flight + few retries — never stack Firestore storms during play.
   void refreshSessionBaseTotal() {
-    unawaited(() async {
-      final cached = ScoreService.instance.myTotalNotifier.value;
-      if (cached != null && !_notifiersDisposed) {
-        final cur = sessionBaseTotalNotifier.value;
-        if (cur == null || cached >= cur) {
-          sessionBaseTotalNotifier.value = cached;
+    _sessionRefreshInFlight ??= () async {
+      try {
+        final cached = ScoreService.instance.myTotalNotifier.value;
+        if (cached != null && !_notifiersDisposed) {
+          final cur = sessionBaseTotalNotifier.value;
+          if (cur == null || cached >= cur) {
+            sessionBaseTotalNotifier.value = cached;
+          }
         }
-      }
 
-      int? total;
-      for (var i = 0; i < 8; i++) {
-        total = await ScoreService.instance.fetchMyTotalScore();
-        if (total != null) break;
-        await Future<void>.delayed(Duration(milliseconds: 350 * (i + 1)));
-      }
-      if (_notifiersDisposed) return;
-      // After game-over submit, that path owns the notifiers — don't clobber.
-      if (_didSubmitScore) return;
-      if (total != null) {
-        final cur = sessionBaseTotalNotifier.value;
-        // Never pull the session base down from a late/stale Firestore read —
-        // except an intentional daily roll to 0.
-        if (cur == null || total >= cur || total == 0) {
-          sessionBaseTotalNotifier.value = total;
+        int? total;
+        for (var i = 0; i < 2; i++) {
+          total = await ScoreService.instance.fetchMyTotalScore();
+          if (total != null) break;
+          await Future<void>.delayed(Duration(milliseconds: 400 * (i + 1)));
         }
-      } else if (sessionBaseTotalNotifier.value == null) {
-        sessionBaseTotalNotifier.value = cached ?? 0;
+        if (_notifiersDisposed) return;
+        // After game-over submit, that path owns the notifiers — don't clobber.
+        if (_didSubmitScore) return;
+        if (total != null) {
+          final cur = sessionBaseTotalNotifier.value;
+          // Never pull the session base down from a late/stale Firestore read —
+          // except an intentional daily roll to 0.
+          if (cur == null || total >= cur || total == 0) {
+            sessionBaseTotalNotifier.value = total;
+          }
+        } else if (sessionBaseTotalNotifier.value == null) {
+          sessionBaseTotalNotifier.value = cached ?? 0;
+        }
+      } finally {
+        _sessionRefreshInFlight = null;
       }
-    }());
+    }();
   }
 
   void _submitScoreOnce() {
@@ -457,10 +463,8 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     _obstacles?.applyScoreProgress(_score);
 
-    _audio.playScore();
-    if (kDebugMode) {
-      debugPrint('Score $_score');
-    }
+    // Score SFX is intentionally a no-op — don't touch audio/console on the
+    // hot path every point.
   }
 
   void _triggerGameOver(Vector2? crashPoint) {

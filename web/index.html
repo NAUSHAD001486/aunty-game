@@ -542,6 +542,7 @@
         setTotal: function (n) {
           if (n === undefined || n === null || n === '') return;
           var s = String(n);
+          if (lsGet(TOTAL_KEY) === s) return;
           lsSet(TOTAL_KEY, s);
           writeCookie(TOTAL_KEY, s);
         }

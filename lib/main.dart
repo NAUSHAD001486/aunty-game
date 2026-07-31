@@ -250,6 +250,9 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() => _awaitingStart = true);
     widget.game.pauseEngine();
+    // Soft network while paused — next run sees daily-roll zeros / claim CTA.
+    widget.game.refreshSessionBaseTotal();
+    unawaited(ScoreService.instance.refreshClaimEligibility());
   }
 
   void _startPlaying() {
@@ -262,8 +265,9 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
       lockLandscapeOrientation();
     }
     widget.game.resumeEngine();
-    widget.game.refreshSessionBaseTotal();
-    unawaited(ScoreService.instance.refreshClaimEligibility());
+    // Use already-warmed session total — do NOT stack another Firestore fetch
+    // or claim watch storm on the first playing frames.
+    ScoreService.instance.pauseClaimRealtimeWatches();
     // Drop landing chrome (blank + privacy) — immersive game only, market style.
     enterWebGameplayMode();
     setState(() => _awaitingStart = false);
@@ -281,6 +285,8 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
 
   @override
   void didChangeMetrics() {
+    // Never rebuild the Flutter tree mid-run for mobile URL-bar chrome noise.
+    if (!_awaitingStart) return;
     // Browser chrome show/hide fires this often — only rebuild on real size change.
     final now = DateTime.now();
     final last = _lastMetricsRebuild;
@@ -385,15 +391,13 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
             body = gameStack;
           }
 
-          // Claim CTA overlay — celebration may fire anywhere; button is home-only.
+          // Claim CTA only on home — unmount during play so no listeners/setState.
           return Stack(
             fit: StackFit.expand,
             children: [
               body,
-              WinnerClaimBanner(
-                // Web: home = awaiting start. Native has no gate → always allow button.
-                showClaimButton: !kIsWeb || _awaitingStart,
-              ),
+              if (!kIsWeb || _awaitingStart)
+                const WinnerClaimBanner(showClaimButton: true),
             ],
           );
       },
@@ -738,31 +742,13 @@ class _HudOverlay extends StatelessWidget {
               return ValueListenableBuilder<int?>(
                 valueListenable: game.sessionBaseTotalNotifier,
                 builder: (_, sessionTotal, __) {
-                  return ValueListenableBuilder<int?>(
-                    valueListenable: ScoreService.instance.myTotalNotifier,
-                    builder: (_, serviceTotal, __) {
-                      // Prefer the higher of live service vs session base so a
-                      // late Firestore read never flashes the HUD downward.
-                      // Exception: service 0 after daily roll must win (no
-                      // extra notifiers / listeners — display-only).
-                      final int? stored;
-                      if (serviceTotal != null && sessionTotal != null) {
-                        if (serviceTotal == 0 && sessionTotal > 0) {
-                          stored = 0;
-                        } else {
-                          stored = serviceTotal >= sessionTotal
-                              ? serviceTotal
-                              : sessionTotal;
-                        }
-                      } else {
-                        stored = serviceTotal ?? sessionTotal;
-                      }
-                      return _ScoreBadge(
-                        score: score,
-                        total: stored,
-                        compact: compact,
-                      );
-                    },
+                  // Freeze to session base during play — do NOT listen to
+                  // myTotalNotifier here (fetch/warm/roll would rebuild HUD
+                  // mid-frame and fight the Flame canvas).
+                  return _ScoreBadge(
+                    score: score,
+                    total: sessionTotal,
+                    compact: compact,
                   );
                 },
               );

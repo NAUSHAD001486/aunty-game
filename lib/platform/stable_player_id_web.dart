@@ -75,11 +75,20 @@ void writeCachedTotalScore(int total) {
   if (total < 0) return;
   final raw = '$total';
 
+  // Skip identical writes — sync cookie/localStorage on the main thread janks.
   try {
-    _auntyStore?.setTotal(raw);
+    final bridge = _auntyStore;
+    if (bridge != null) {
+      final existing = bridge.getTotal().trim();
+      if (existing == raw) return;
+      bridge.setTotal(raw);
+      return;
+    }
   } catch (_) {}
 
   try {
+    final existing = web.window.localStorage.getItem(_totalKey);
+    if (existing == raw) return;
     web.window.localStorage.setItem(_totalKey, raw);
   } catch (_) {}
 }

@@ -241,6 +241,9 @@ class ScoreService {
       return;
     }
 
+    // Skip identical publishes — avoids localStorage/cookie writes mid-play.
+    if (current == total && cached == total) return;
+
     myTotalNotifier.value = total;
     writeCachedTotalScore(total);
   }
@@ -725,9 +728,14 @@ class ScoreService {
         debugPrint('[Score] 8 PM IST boundary hit — rolling local + server totals');
       }
       _publishTotal(0, allowDowngrade: true);
-      // Never await inside the timer — keep the game loop free.
+      // Defer network off the timer tick so a mid-run boundary never hitch
+      // the current frame budget.
       if (_ready) {
-        unawaited(fetchMyTotalScore());
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 1500), () {
+            if (_ready) unawaited(fetchMyTotalScore());
+          }),
+        );
       }
       _scheduleNextTournamentRoll();
     });
@@ -1057,17 +1065,19 @@ class ScoreService {
 
     _claimDocSub ??= _claimRef(playerId).snapshots().listen(
       (snap) {
-        // ignore: avoid_print
-        print(
-          '[Claim] winners_claims/$playerId snapshot exists=${snap.exists}',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            '[Claim] winners_claims/$playerId snapshot exists=${snap.exists}',
+          );
+        }
         unawaited(_recomputeClaimEligibility(playerId: playerId));
       },
       onError: (Object e) {
-        // ignore: avoid_print
-        print(
-          '[Claim] claim doc watch error (still recomputing via get): $e',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            '[Claim] claim doc watch error (still recomputing via get): $e',
+          );
+        }
         unawaited(_recomputeClaimEligibility(playerId: playerId));
       },
     );
@@ -1075,18 +1085,32 @@ class ScoreService {
     _confirmedWinnerSub ??= _confirmedWinnerRef.snapshots().listen(
       (snap) {
         final confirmedUid = confirmedUidFromData(snap.data());
-        // ignore: avoid_print
-        print(
-          '[Claim] confirmed_winner live update uid=$confirmedUid '
-          '(admin can replace this field anytime)',
-        );
+        if (kDebugMode) {
+          debugPrint(
+            '[Claim] confirmed_winner live update uid=$confirmedUid '
+            '(admin can replace this field anytime)',
+          );
+        }
         unawaited(_recomputeClaimEligibility(playerId: playerId));
       },
       onError: (Object e) {
-        // ignore: avoid_print
-        print('[Claim] confirmed_winner watch error: $e');
+        if (kDebugMode) {
+          debugPrint('[Claim] confirmed_winner watch error: $e');
+        }
       },
     );
+  }
+
+  /// Cancel claim Firestore listeners while the Flame game is active.
+  /// Call again via [refreshClaimEligibility] when returning to home.
+  void pauseClaimRealtimeWatches() {
+    _claimDocSub?.cancel();
+    _claimDocSub = null;
+    _confirmedWinnerSub?.cancel();
+    _confirmedWinnerSub = null;
+    _watchedClaimUid = null;
+    _claimExpiryTimer?.cancel();
+    _claimExpiryTimer = null;
   }
 
   /// Returns whether a claim doc exists. `null` = unknown (do not show claim UI).

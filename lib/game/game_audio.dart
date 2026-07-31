@@ -111,7 +111,6 @@ class GameAudio {
     } else {
       SystemSound.play(SystemSoundType.click);
     }
-    debugPrint('[GameAudio] Jump sound');
   }
 
   Future<void> _playJumpNative() async {

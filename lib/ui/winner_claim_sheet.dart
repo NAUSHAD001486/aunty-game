@@ -669,18 +669,9 @@ class _WinnerClaimBannerState extends State<WinnerClaimBanner> {
   }
 
   Future<void> _bootstrap() async {
-    // ignore: avoid_print
-    print('[ClaimUI] bootstrap — refreshing claim eligibility');
     await ScoreService.instance.refreshClaimEligibility();
     if (!mounted) return;
     _bootstrapped = true;
-    // ignore: avoid_print
-    print(
-      '[ClaimUI] bootstrap done ready='
-      '${ScoreService.instance.claimEligibilityReadyNotifier.value} '
-      'canClaim=${ScoreService.instance.canClaimPrizeNotifier.value} '
-      'scoreDocId=${ScoreService.instance.playerId}',
-    );
     _onEligibility();
   }
 
@@ -689,11 +680,6 @@ class _WinnerClaimBannerState extends State<WinnerClaimBanner> {
     setState(() {});
     final ready = ScoreService.instance.claimEligibilityReadyNotifier.value;
     final canClaim = ScoreService.instance.canClaimPrizeNotifier.value;
-    // ignore: avoid_print
-    print(
-      '[ClaimUI] eligibility tick bootstrapped=$_bootstrapped '
-      'ready=$ready canClaim=$canClaim dialogOpen=$_dialogOpen',
-    );
     if (!_bootstrapped ||
         !ready ||
         !canClaim ||
