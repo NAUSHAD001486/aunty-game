@@ -21,29 +21,23 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // One doc per finished 24h cycle = highest score seen so far (~2 days).
-    // Doc id MUST equal cycleId. Clients max-upsert; lower scores cannot overwrite.
+    // 12h window snapshots of users_scores (kept ~2 days for winner audit).
     match /score_archives/{archiveId} {
       allow read: if request.auth != null;
 
       allow create: if request.auth != null
-        && archiveId == request.resource.data.cycleId
+        && request.resource.data.authUid == request.auth.uid
         && request.resource.data.playerId is string
         && request.resource.data.cycleId is string
         && request.resource.data.totalScore is int
         && request.resource.data.tournamentScore is int
-        && request.resource.data.expireAt is timestamp;
+        && request.resource.data.expireAt is timestamp
+        && archiveId ==
+            request.resource.data.cycleId + '_' + request.resource.data.playerId;
 
-      allow update: if request.auth != null
-        && archiveId == resource.data.cycleId
-        && archiveId == request.resource.data.cycleId
-        && request.resource.data.playerId is string
-        && request.resource.data.totalScore is int
-        && request.resource.data.totalScore > resource.data.totalScore
-        && request.resource.data.tournamentScore is int
-        && request.resource.data.expireAt is timestamp;
+      allow update: if false;
 
-      // Any signed-in client may purge expired archive docs (legacy + leader).
+      // Any signed-in client may purge expired archive docs.
       allow delete: if request.auth != null
         && resource.data.expireAt is timestamp
         && resource.data.expireAt <= request.time;
