@@ -1,14 +1,24 @@
 {
-    "name": "aunty",
-    "short_name": "aunty",
-    "start_url": ".",
+    "name": "AuntyPari",
+    "short_name": "AuntyPari",
+    "start_url": "/",
     "display": "standalone",
-    "background_color": "#000000",
-    "theme_color": "#000000",
-    "description": "A new Flutter project.",
-    "orientation": "landscape",
+    "background_color": "#F4F6F8",
+    "theme_color": "#F4F6F8",
+    "description": "Play AuntyPari online for free — no download, no signup.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
+        {
+            "src": "icons/favicon-48.png",
+            "sizes": "48x48",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/favicon-96.png",
+            "sizes": "96x96",
+            "type": "image/png"
+        },
         {
             "src": "icons/Icon-192.png",
             "sizes": "192x192",
