@@ -67,6 +67,8 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   /// True after boot assets + world are ready (home gate can start play).
   final ValueNotifier<bool> bootReadyNotifier = ValueNotifier<bool>(false);
 
+  VoidCallback? _dailyResetListener;
+
   /// Fixed logical world — reuse one vector (callers must not mutate it).
   final Vector2 _worldSize = Vector2(
     LayoutConfig.worldWidth,
@@ -149,6 +151,16 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
 
     debugPrint('[MyGame] Loaded');
     bootReadyNotifier.value = true;
+    _dailyResetListener ??= () {
+      if (_notifiersDisposed) return;
+      // 8 PM IST roll — clear session floors so HUD shows 0 immediately.
+      sessionBaseTotalNotifier.value = 0;
+      if (totalScoreNotifier.value != null) {
+        totalScoreNotifier.value = 0;
+      }
+    };
+    ScoreService.instance.dailyResetEpochNotifier
+        .addListener(_dailyResetListener!);
     refreshSessionBaseTotal();
   }
 
@@ -174,8 +186,9 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
       if (_didSubmitScore) return;
       if (total != null) {
         final cur = sessionBaseTotalNotifier.value;
-        // Never pull the session base down from a late/stale Firestore read.
-        if (cur == null || total >= cur) {
+        // Never pull the session base down from a late/stale Firestore read —
+        // except an intentional daily roll to 0.
+        if (cur == null || total >= cur || total == 0) {
           sessionBaseTotalNotifier.value = total;
         }
       } else if (sessionBaseTotalNotifier.value == null) {
@@ -611,6 +624,12 @@ class MyGame extends FlameGame with HasCollisionDetection, TapCallbacks {
   void disposeNotifiers() {
     if (_notifiersDisposed) return;
     _notifiersDisposed = true;
+    final resetListener = _dailyResetListener;
+    if (resetListener != null) {
+      ScoreService.instance.dailyResetEpochNotifier
+          .removeListener(resetListener);
+      _dailyResetListener = null;
+    }
     scoreNotifier.dispose();
     totalScoreNotifier.dispose();
     sessionBaseTotalNotifier.dispose();
