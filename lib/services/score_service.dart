@@ -64,6 +64,14 @@ class ScoreService {
   SharedPreferences? _prefs;
   Future<SharedPreferences>? _prefsInFlight;
 
+  /// Prevents concurrent archive+reset storms (boot warm + fetch races).
+  Future<void>? _tournamentRollInFlight;
+  String? _tournamentRollInFlightCycle;
+
+  /// Archive TTL cleanup is rare work — never on every death/submit.
+  DateTime? _lastArchivePurgeAt;
+  static const Duration _archivePurgeMinInterval = Duration(hours: 6);
+
   FirebaseAuth get _auth => FirebaseAuth.instance;
   FirebaseFirestore get _db => FirebaseFirestore.instance;
 
@@ -144,7 +152,8 @@ class ScoreService {
         _prefsInFlight = null;
       }
       _ready = true;
-      _scheduleNextTournamentRoll();
+      // After paint/boot — one-shot timer only (no polling).
+      Timer(const Duration(seconds: 2), _scheduleNextTournamentRoll);
       unawaited(_warmUserProfile());
       // ignore: avoid_print
       print('[ScoreService] Firebase ready — scores + claim can proceed');
@@ -435,7 +444,9 @@ class ScoreService {
       final data = snap.data()!;
       // Lazy daily roll (8 PM IST): archive previous window, then show 0.
       if (_needsTournamentRoll(data)) {
-        unawaited(_archiveAndResetStaleScore(user: user, playerId: id, data: data));
+        unawaited(
+          _archiveAndResetStaleScore(user: user, playerId: id, data: data),
+        );
         _publishTotal(0, allowDowngrade: true);
         return 0;
       }
@@ -493,8 +504,10 @@ class ScoreService {
     final prev = data['tournamentCycleId']?.toString().trim() ?? '';
     if (prev.isNotEmpty) return prev != cycleId;
 
-    // Legacy docs without tournamentCycleId: roll if last activity was before
-    // this 8 PM IST window; otherwise keep score and stamp cycle on next write.
+    // Legacy docs without tournamentCycleId: roll only when we can prove the
+    // last activity was before this 8 PM IST window. Missing timestamps must
+    // NOT force a roll (pending serverTimestamp / cache) — that caused extra
+    // Firestore writes + HUD thrash on boot.
     final windowStart = currentTournamentWindowStart();
     DateTime? marker;
     final rawCycle = data['cycleStartDate'];
@@ -511,15 +524,16 @@ class ScoreService {
         marker = updated.toUtc();
       }
     }
-    if (marker == null) return true;
+    if (marker == null) return false;
     return marker.isBefore(windowStart);
   }
 
   /// READ current `totalScore` → add [runScore] → WRITE sum (never overwrite
   /// with only the run score when a document already exists).
   Future<int?> submitRunScore(int runScore) async {
-    // ignore: avoid_print
-    print('[Score] submitRunScore called runScore=$runScore ready=$_ready');
+    if (kDebugMode) {
+      debugPrint('[Score] submitRunScore called runScore=$runScore ready=$_ready');
+    }
     if (runScore < 0) return null;
 
     // Zero-point death: still surface the saved total; don't mint a blank row
@@ -535,11 +549,13 @@ class ScoreService {
 
     if (!_ready) {
       final ok = await init();
-      // ignore: avoid_print
-      print('[Score] init before submit → ok=$ok');
+      if (kDebugMode) {
+        debugPrint('[Score] init before submit → ok=$ok');
+      }
       if (!ok) {
-        // ignore: avoid_print
-        print('[Score] ABORT — Firebase init failed, cannot upload score');
+        if (kDebugMode) {
+          debugPrint('[Score] ABORT — Firebase init failed, cannot upload score');
+        }
         return myTotalNotifier.value ?? readCachedTotalScore();
       }
     }
@@ -549,10 +565,11 @@ class ScoreService {
       final id = _playerId ?? user.uid;
       final ref = _playerRef(id);
       final authUid = user.uid;
-      // ignore: avoid_print
-      print('[Score] signed in authUid=$authUid playerId=$id');
-
+      if (kDebugMode) {
+        debugPrint('[Score] signed in authUid=$authUid playerId=$id');
+      }
       // If the daily 8 PM window rolled, archive old scores BEFORE accumulating.
+      // Do NOT purge archives on every death — that query janks gameplay.
       final pre = await ref.get(const GetOptions(source: Source.serverAndCache));
       if (pre.exists) {
         final preData = pre.data()!;
@@ -561,14 +578,13 @@ class ScoreService {
             playerId: id,
             data: preData,
           );
+          unawaited(_purgeExpiredScoreArchives());
         }
       }
-      unawaited(_purgeExpiredScoreArchives());
 
       final nextTotal = await _db.runTransaction<int>((tx) async {
         final snap = await tx.get(ref);
         final now = DateTime.now().toUtc();
-        final cycleId = currentTournamentCycleId(now);
         final windowStart = currentTournamentWindowStart(now);
 
         String display = user.displayName?.trim().isNotEmpty == true
@@ -600,8 +616,9 @@ class ScoreService {
             : display;
 
         var total = (data['totalScore'] as num?)?.toInt() ?? 0;
-        final prevCycle = data['tournamentCycleId']?.toString() ?? '';
-        final rolled = prevCycle != cycleId;
+        // Use the same roll predicate as fetch — empty cycleId in-window must
+        // NOT wipe a live total (prevCycle != cycleId was too aggressive).
+        final rolled = _needsTournamentRoll(data);
         if (rolled) {
           // New daily window — both competition scores start fresh.
           total = 0;
@@ -632,16 +649,18 @@ class ScoreService {
         return accumulated;
       });
 
-      // ignore: avoid_print
-      print('[Score] UPLOADED playerId=$id run=+$runScore → totalScore=$nextTotal');
+      if (kDebugMode) {
+        debugPrint(
+          '[Score] UPLOADED playerId=$id run=+$runScore → totalScore=$nextTotal',
+        );
+      }
       // Cycle resets are the only intentional downward publish (handled when
       // fetch sees a roll). Submit path never flashes the HUD downward.
       _publishTotal(nextTotal);
       unawaited(refreshClaimEligibility());
       return nextTotal;
     } catch (e, st) {
-      // ignore: avoid_print
-      print('[Score] submitRunScore FAILED: $e');
+      debugPrint('[Score] submitRunScore FAILED: $e');
       debugPrint('$st');
       // Keep optimistic/local cache visible if the write failed.
       return myTotalNotifier.value ?? readCachedTotalScore();
@@ -691,24 +710,24 @@ class ScoreService {
     _tournamentRollTimer?.cancel();
     final now = DateTime.now().toUtc();
     var delay = nextTournamentRollAt(now).difference(now);
-    if (delay.isNegative) {
-      delay = const Duration(seconds: 2);
+    // Keep away from a tight reschedule loop if the clock sits on the boundary.
+    if (delay < const Duration(seconds: 5)) {
+      delay = const Duration(seconds: 5);
     }
-    // ignore: avoid_print
-    print(
-      '[Score] next daily reset (8 PM IST) in '
-      '${delay.inMinutes} min (cycle=${currentTournamentCycleId(now)})',
-    );
-    _tournamentRollTimer = Timer(delay + const Duration(seconds: 1), () async {
-      // ignore: avoid_print
-      print('[Score] 8 PM IST boundary hit — rolling local + server totals');
+    if (kDebugMode) {
+      debugPrint(
+        '[Score] next daily reset (8 PM IST) in '
+        '${delay.inMinutes} min (cycle=${currentTournamentCycleId(now)})',
+      );
+    }
+    _tournamentRollTimer = Timer(delay, () {
+      if (kDebugMode) {
+        debugPrint('[Score] 8 PM IST boundary hit — rolling local + server totals');
+      }
       _publishTotal(0, allowDowngrade: true);
-      try {
-        if (_ready) {
-          await fetchMyTotalScore();
-        }
-      } catch (e) {
-        debugPrint('[ScoreService] tournament roll refresh failed: $e');
+      // Never await inside the timer — keep the game loop free.
+      if (_ready) {
+        unawaited(fetchMyTotalScore());
       }
       _scheduleNextTournamentRoll();
     });
@@ -720,13 +739,9 @@ class ScoreService {
     DateTime now,
   ) {
     final cycleId = currentTournamentCycleId(now);
-    final prev = existing?['tournamentCycleId']?.toString() ?? '';
-    var score = (existing?['tournamentScore'] as num?)?.toInt() ?? 0;
-    if (prev != cycleId) {
-      score = runScore;
-    } else {
-      score += runScore;
-    }
+    final rolled = existing == null || _needsTournamentRoll(existing);
+    final prevScore = (existing?['tournamentScore'] as num?)?.toInt() ?? 0;
+    final score = rolled ? runScore : prevScore + runScore;
     return {
       'tournamentCycleId': cycleId,
       'tournamentScore': score,
@@ -801,43 +816,70 @@ class ScoreService {
     required String playerId,
     required Map<String, dynamic> data,
   }) async {
+    final cycleId = currentTournamentCycleId();
+    if (_tournamentRollInFlight != null &&
+        _tournamentRollInFlightCycle == cycleId) {
+      return _tournamentRollInFlight!;
+    }
+
+    final future = () async {
+      try {
+        await _archivePlayerScoreSnapshot(playerId: playerId, data: data);
+        final now = DateTime.now().toUtc();
+        final windowStart = currentTournamentWindowStart(now);
+        final display =
+            (data['displayName'] as String?)?.trim().isNotEmpty == true
+                ? (data['displayName'] as String).trim()
+                : defaultDisplayNameFor(playerId);
+        await _playerRef(playerId).set(
+          {
+            'playerId': playerId,
+            'authUid': user.uid,
+            'uid': playerId,
+            'displayName': display,
+            'totalScore': 0,
+            'tournamentScore': 0,
+            'tournamentCycleId': cycleId,
+            'lastRunScore': 0,
+            'cycleStartDate': Timestamp.fromDate(windowStart),
+            'updatedAt': FieldValue.serverTimestamp(),
+            'tournamentUpdatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+        writeCachedTotalScore(0);
+        if (kDebugMode) {
+          debugPrint('[Score] reset playerId=$playerId for cycle=$cycleId');
+        }
+        unawaited(_purgeExpiredScoreArchives());
+      } catch (e) {
+        debugPrint('[ScoreService] archiveAndResetStaleScore failed: $e');
+      }
+    }();
+
+    _tournamentRollInFlightCycle = cycleId;
+    _tournamentRollInFlight = future;
     try {
-      await _archivePlayerScoreSnapshot(playerId: playerId, data: data);
-      final now = DateTime.now().toUtc();
-      final cycleId = currentTournamentCycleId(now);
-      final windowStart = currentTournamentWindowStart(now);
-      final display = (data['displayName'] as String?)?.trim().isNotEmpty == true
-          ? (data['displayName'] as String).trim()
-          : defaultDisplayNameFor(playerId);
-      await _playerRef(playerId).set(
-        {
-          'playerId': playerId,
-          'authUid': user.uid,
-          'uid': playerId,
-          'displayName': display,
-          'totalScore': 0,
-          'tournamentScore': 0,
-          'tournamentCycleId': cycleId,
-          'lastRunScore': 0,
-          'cycleStartDate': Timestamp.fromDate(windowStart),
-          'updatedAt': FieldValue.serverTimestamp(),
-          'tournamentUpdatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
-      writeCachedTotalScore(0);
-      // ignore: avoid_print
-      print('[Score] reset playerId=$playerId for cycle=$cycleId');
-      unawaited(_purgeExpiredScoreArchives());
-    } catch (e) {
-      debugPrint('[ScoreService] archiveAndResetStaleScore failed: $e');
+      await future;
+    } finally {
+      if (identical(_tournamentRollInFlight, future)) {
+        _tournamentRollInFlight = null;
+        _tournamentRollInFlightCycle = null;
+      }
     }
   }
 
   /// Best-effort delete of archives past expireAt (any signed-in client).
+  /// Throttled — must never run on the hot gameplay/submit path every death.
   Future<void> _purgeExpiredScoreArchives() async {
+    final nowUtc = DateTime.now().toUtc();
+    final last = _lastArchivePurgeAt;
+    if (last != null && nowUtc.difference(last) < _archivePurgeMinInterval) {
+      return;
+    }
+    _lastArchivePurgeAt = nowUtc;
     try {
-      final now = Timestamp.now();
+      final now = Timestamp.fromDate(nowUtc);
       final snap = await _scoreArchives
           .where('expireAt', isLessThanOrEqualTo: now)
           .limit(25)
@@ -848,9 +890,12 @@ class ScoreService {
         batch.delete(doc.reference);
       }
       await batch.commit();
-      // ignore: avoid_print
-      print('[Score] purged ${snap.docs.length} expired score_archives');
+      if (kDebugMode) {
+        debugPrint('[Score] purged ${snap.docs.length} expired score_archives');
+      }
     } catch (e) {
+      // Allow retry sooner if the query failed (e.g. missing index).
+      _lastArchivePurgeAt = null;
       debugPrint('[ScoreService] purgeExpiredScoreArchives skipped: $e');
     }
   }
