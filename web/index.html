@@ -254,7 +254,7 @@
 
     #landing-shell .highlights {
       margin-top: 8px;
-      padding: 0 0 8px;
+      padding: 0 2px 8px;
     }
 
     #landing-shell .cards {
@@ -272,58 +272,58 @@
     }
 
     #landing-shell .card .accent {
-      height: 3px;
+      height: 2px;
       width: 100%;
       flex-shrink: 0;
       background: linear-gradient(90deg, #E8D078, #C9A227, #E8D078);
     }
 
+    /* Desktop / wide: photo + copy row, right-leaning. */
     #landing-shell .card .body {
-      padding: 18px 22px 20px;
+      padding: 14px 14px 18px 22px;
       display: flex;
       flex-direction: row;
       align-items: center;
       justify-content: flex-end;
-      gap: 24px;
+      gap: 12px;
     }
 
-    #landing-shell .winner-copy {
-      flex: 0 1 auto;
-      min-width: 0;
-      max-width: 420px;
+    #landing-shell .winner-photo-col {
       display: flex;
       flex-direction: column;
-      align-items: flex-start;
-    }
-
-    #landing-shell .badge.winner {
-      display: inline-flex;
       align-items: center;
-      gap: 5px;
-      padding: 5px 10px;
-      border-radius: 8px;
-      background: var(--gold-deep);
-      color: #fff;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 1.1px;
-      margin-bottom: 8px;
-      box-shadow: 0 2px 8px rgba(201, 162, 39, 0.2);
+      flex-shrink: 0;
     }
 
     #landing-shell .card.winner h3 {
-      margin: 0 0 10px;
-      font-size: 22px;
-      font-weight: 900;
-      letter-spacing: -0.3px;
+      margin: 0 0 8px;
+      font-size: 13.5px;
+      font-weight: 800;
+      font-style: italic;
+      letter-spacing: 0.9px;
       line-height: 1.1;
       color: var(--gold-deep);
-      text-align: left;
+      text-align: center;
+    }
+
+    #landing-shell .card.winner h3::after {
+      content: '';
+      display: block;
+      width: 34px;
+      height: 1.25px;
+      margin: 4px auto 0;
+      border-radius: 1px;
+      background: linear-gradient(
+        90deg,
+        rgba(201, 162, 39, 0.05),
+        rgba(201, 162, 39, 0.75),
+        rgba(201, 162, 39, 0.05)
+      );
     }
 
     #landing-shell .winner-avatar {
-      width: 128px;
-      height: 128px;
+      width: 112px;
+      height: 112px;
       border-radius: 50%;
       border: 3px solid var(--gold);
       box-shadow: 0 5px 16px rgba(201, 162, 39, 0.25);
@@ -354,17 +354,28 @@
       display: block;
     }
 
+    #landing-shell .winner-copy {
+      flex: 0 1 auto;
+      min-width: 0;
+      max-width: 130px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+    }
+
     #landing-shell .winner-name {
       margin: 0;
-      font-size: 20px;
+      font-size: 17px;
       font-weight: 900;
-      letter-spacing: 0.15px;
+      letter-spacing: 0.12px;
       color: var(--ink);
       display: none;
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      line-height: 1.15;
     }
 
     #landing-shell .winner-name.is-on {
@@ -372,21 +383,21 @@
     }
 
     #landing-shell .winner-score {
-      margin: 12px 0 0;
+      margin: 8px 0 0;
       display: none;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 16px;
-      border-radius: 24px;
-      background: linear-gradient(90deg, #F5E6A8, #E8D078);
-      border: 1px solid rgba(201, 162, 39, 0.33);
-      color: var(--gold-deep);
-      font-size: 14px;
-      font-weight: 800;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: #EEE8D8;
+      border: 1px solid rgba(168, 137, 42, 0.16);
+      color: #6E5C28;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.12px;
+      line-height: 1.2;
     }
 
     #landing-shell .winner-score.is-on {
-      display: inline-flex;
+      display: inline-block;
     }
 
     #landing-shell .winner-skels {
@@ -394,7 +405,7 @@
       display: flex;
       flex-direction: column;
       align-items: flex-start;
-      margin-top: 4px;
+      margin-top: 0;
     }
 
     #landing-shell .card.winner.is-hydrated #shell-winner-skels,
@@ -412,16 +423,88 @@
     #landing-shell .skel.line {
       height: 14px;
       margin-top: 10px;
-      width: 55%;
+      width: 72%;
     }
 
-    #landing-shell .privacy {
-      text-align: center;
-      padding: 16px 12px 8px;
+    /* Footer band — mirrors Flutter LandingPrivacyFooter. */
+    #landing-shell .shell-footer {
+      margin-top: 4px;
+      margin-left: -10px;
+      margin-right: -10px;
+      margin-bottom: -24px;
+      padding: 36px 16px 44px;
+      background: #E8ECF0;
+      min-height: 180px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      box-sizing: border-box;
+    }
+
+    #landing-shell .shell-footer .brand {
+      text-align: left;
+    }
+
+    #landing-shell .shell-footer .brand-name {
+      margin: 0;
       font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.45px;
+      color: rgba(18, 24, 32, 0.88);
+      line-height: 1.1;
+    }
+
+    #landing-shell .shell-footer .brand-tag {
+      margin: 4px 0 0;
+      font-size: 10.5px;
       font-weight: 500;
-      letter-spacing: 0.4px;
-      color: var(--muted);
+      letter-spacing: 0.3px;
+      color: rgba(90, 101, 112, 0.85);
+    }
+
+    #landing-shell .shell-footer .nav {
+      margin-top: 28px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      color: #6B7580;
+      line-height: 1.6;
+    }
+
+    #landing-shell .shell-footer .nav a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    #landing-shell .shell-footer .legal {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      color: #5A6570;
+      line-height: 1.5;
+    }
+
+    #landing-shell .shell-footer .legal a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    #landing-shell .shell-footer .copy {
+      margin: 14px 0 0;
+      text-align: center;
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      color: rgba(90, 101, 112, 0.65);
+    }
+
+    #landing-shell .shell-footer .dot {
+      margin: 0 4px;
+      color: rgba(201, 162, 39, 0.55);
+      font-weight: 600;
     }
 
     /* Crawlable landmarks — kept out of the visual composition. */
@@ -438,42 +521,42 @@
     }
 
     @media (max-width: 520px) {
-      #landing-shell { padding: 8px 6px 20px; }
+      #landing-shell { padding: 8px 6px 0; }
       #landing-shell .play-card {
         height: 62vh;
         height: 62dvh;
         border-radius: 16px;
       }
       #landing-shell .card .body {
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        padding: 16px;
-        gap: 0;
-      }
-      #landing-shell .winner-copy {
-        align-items: center;
-        width: 100%;
-        margin-top: 14px;
-      }
-      #landing-shell .card.winner h3 {
-        text-align: center;
-        font-size: 20px;
+        padding: 14px 6px 14px 10px;
+        justify-content: flex-end;
+        gap: 12px;
       }
       #landing-shell .winner-avatar {
         width: 112px;
         height: 112px;
       }
+      #landing-shell .shell-footer {
+        margin-left: -6px;
+        margin-right: -6px;
+        padding: 36px 16px 44px;
+        min-height: 200px;
+      }
+    }
+
+    @media (min-width: 521px) {
+      #landing-shell .winner-avatar {
+        width: 128px;
+        height: 128px;
+      }
+      #landing-shell .card.winner h3 {
+        font-size: 15px;
+      }
       #landing-shell .winner-name {
-        font-size: 18px;
-        text-align: center;
+        font-size: 20px;
       }
-      #landing-shell .winner-skels {
-        align-items: center;
-      }
-      #landing-shell .skel.line {
-        margin-left: auto;
-        margin-right: auto;
+      #landing-shell .winner-copy {
+        max-width: 160px;
       }
     }
 
@@ -779,16 +862,17 @@
         <article class="card winner" id="shell-winner-card">
           <div class="accent" aria-hidden="true"></div>
           <div class="body">
-            <div class="winner-avatar" id="shell-winner-avatar" aria-hidden="true">
-              <div class="skel circle"></div>
-              <img id="shell-winner-img" alt="" decoding="sync" fetchpriority="high">
+            <div class="winner-photo-col">
+              <h3>Latest Winner</h3>
+              <div class="winner-avatar" id="shell-winner-avatar" aria-hidden="true">
+                <div class="skel circle"></div>
+                <img id="shell-winner-img" alt="" decoding="sync" fetchpriority="high">
+              </div>
             </div>
             <div class="winner-copy">
-              <span class="badge winner">🏆 CHAMPION</span>
-              <h3>Latest Winner</h3>
               <div class="winner-skels" id="shell-winner-skels" aria-hidden="true">
                 <div class="skel line"></div>
-                <div class="skel line" style="width:32%;height:30px;margin-top:12px;border-radius:24px;"></div>
+                <div class="skel line" style="width:55%;height:22px;margin-top:10px;border-radius:12px;"></div>
               </div>
               <p class="winner-name" id="shell-winner-name"></p>
               <div class="winner-score" id="shell-winner-score"></div>
@@ -798,7 +882,22 @@
       </div>
     </section>
 
-    <div class="privacy">Privacy Policy</div>
+    <footer class="shell-footer" aria-label="Site footer">
+      <div class="brand">
+        <p class="brand-name">AuntyPari</p>
+        <p class="brand-tag">Free online · Daily champion</p>
+      </div>
+      <div class="nav">
+        <a href="/blog">Blog</a><span class="dot">·</span>
+        <a href="/how-to-play">How to Play</a><span class="dot">·</span>
+        <a href="/about">About Us</a>
+      </div>
+      <div class="legal">
+        <a href="/privacy">Privacy Policy</a><span class="dot">·</span>
+        <a href="/terms">Terms of Use</a>
+      </div>
+      <p class="copy">© 2026 AuntyPari</p>
+    </footer>
 
     <section class="seo-landmarks" aria-label="AuntyPari overview">
       <h1>AuntyPari: The New Funniest Game to Play Online</h1>
