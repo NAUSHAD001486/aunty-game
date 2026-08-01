@@ -52,76 +52,182 @@ class HomepagePromoPanel extends StatelessWidget {
   }
 }
 
-/// Footer links: Blog · How to Play · About Us · Privacy · Terms
+/// Site footer — brand mark, explore links, legal row (home only).
 class LandingPrivacyFooter extends StatelessWidget {
   const LandingPrivacyFooter({super.key});
 
-  static const _style = TextStyle(
+  static const _muted = Color(0xFF5A6570);
+  static const _inkSoft = Color(0xFF2A3340);
+  static const _linkStyle = TextStyle(
     fontSize: 13,
-    letterSpacing: 0.4,
-    fontWeight: FontWeight.w500,
+    letterSpacing: 0.15,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
   );
-
-  static const _dot = Text(
-    '·',
-    style: TextStyle(color: Color(0xFFB0B8C1), fontSize: 14),
+  static const _legalStyle = TextStyle(
+    fontSize: 12,
+    letterSpacing: 0.2,
+    fontWeight: FontWeight.w500,
+    height: 1.2,
   );
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    final w = MediaQuery.sizeOf(context).width;
+    final compact = w < 520;
+
+    return ColoredBox(
       color: HomepagePromoPanel.surface,
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          TextButton(
-            onPressed: openBlog,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          compact ? 16 : 28,
+          compact ? 6 : 10,
+          compact ? 16 : 28,
+          compact ? 32 : 36,
+        ),
+        child: Column(
+          children: [
+            Container(
+              height: 1,
+              margin: EdgeInsets.only(bottom: compact ? 18 : 22),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0x00C9A227),
+                    Color(0x66C9A227),
+                    Color(0x00C9A227),
+                  ],
+                ),
+              ),
             ),
-            child: const Text('Blog', style: _style),
-          ),
-          _dot,
-          TextButton(
-            onPressed: openHowToPlay,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            Text(
+              'AuntyPari',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: HomepagePromoPanel._ink,
+                fontSize: compact ? 17 : 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.6,
+                height: 1.1,
+              ),
             ),
-            child: const Text('How to Play', style: _style),
-          ),
-          _dot,
-          TextButton(
-            onPressed: openAboutUs,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            const SizedBox(height: 4),
+            Text(
+              'Free online · Daily champion',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _muted.withValues(alpha: 0.92),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.35,
+              ),
             ),
-            child: const Text('About Us', style: _style),
-          ),
-          _dot,
-          TextButton(
-            onPressed: openPrivacyPolicy,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            SizedBox(height: compact ? 16 : 18),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: compact ? 6 : 10,
+              runSpacing: 8,
+              children: [
+                _FooterChip(label: 'Blog', onTap: openBlog),
+                _FooterChip(label: 'How to Play', onTap: openHowToPlay),
+                _FooterChip(label: 'About Us', onTap: openAboutUs),
+              ],
             ),
-            child: const Text('Privacy Policy', style: _style),
-          ),
-          _dot,
-          TextButton(
-            onPressed: openTerms,
-            style: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF5A6570),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            SizedBox(height: compact ? 14 : 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextButton(
+                  onPressed: openPrivacyPolicy,
+                  style: TextButton.styleFrom(
+                    foregroundColor: _inkSoft,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Privacy Policy', style: _legalStyle),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Text(
+                    '·',
+                    style: TextStyle(
+                      color: HomepagePromoPanel._gold.withValues(alpha: 0.7),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: openTerms,
+                  style: TextButton.styleFrom(
+                    foregroundColor: _inkSoft,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Terms of Use', style: _legalStyle),
+                ),
+              ],
             ),
-            child: const Text('Terms', style: _style),
+            SizedBox(height: compact ? 14 : 16),
+            Text(
+              '© ${DateTime.now().year} AuntyPari',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _muted.withValues(alpha: 0.75),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0.25,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FooterChip extends StatelessWidget {
+  const _FooterChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFFFF),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0x180A1620)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x080A1620),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
-        ],
+          child: Text(
+            label,
+            style: LandingPrivacyFooter._linkStyle.copyWith(
+              color: LandingPrivacyFooter._inkSoft,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -320,31 +426,47 @@ class _CompactWinnerBody extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        if (showShimmer)
-          _ShimmerCircle(size: avatarSize)
-        else
-          _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
-        const SizedBox(height: 12),
-        if (showShimmer) ...[
-          const _ShimmerLine(widthFactor: 0.5, height: 16),
-          const SizedBox(height: 12),
-          const _ShimmerLine(widthFactor: 0.36, height: 28),
-        ] else ...[
-          Text(
-            name,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: HomepagePromoPanel._ink,
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.2,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (showShimmer)
+              _ShimmerCircle(size: avatarSize)
+            else
+              _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
+            const SizedBox(width: 14),
+            Expanded(
+              child: showShimmer
+                  ? const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _ShimmerLine(widthFactor: 0.72, height: 16),
+                        SizedBox(height: 12),
+                        _ShimmerLine(widthFactor: 0.55, height: 28),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: HomepagePromoPanel._ink,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.15,
+                            height: 1.15,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _ScorePill(score: score),
+                      ],
+                    ),
             ),
-          ),
-          const SizedBox(height: 12),
-          _ScorePill(score: score),
-        ],
+          ],
+        ),
       ],
     );
   }
