@@ -36,9 +36,9 @@ class HomepagePromoPanel extends StatelessWidget {
           return Padding(
             padding: EdgeInsets.fromLTRB(
               side,
-              compact ? 6 : 10,
+              compact ? 8 : 10,
               side,
-              compact ? 6 : 14,
+              compact ? 10 : 14,
             ),
             child: _WinnerShowcase(
               winner: winner,
@@ -56,27 +56,6 @@ class HomepagePromoPanel extends StatelessWidget {
 class LandingPrivacyFooter extends StatelessWidget {
   const LandingPrivacyFooter({super.key});
 
-  @override
-  Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 520;
-
-    return Container(
-      width: double.infinity,
-      color: HomepagePromoPanel.surface,
-      padding: EdgeInsets.fromLTRB(
-        compact ? 16 : 12,
-        compact ? 4 : 8,
-        compact ? 16 : 12,
-        compact ? 22 : 28,
-      ),
-      child: compact ? const _MobileFooterLinks() : const _DesktopFooterLinks(),
-    );
-  }
-}
-
-class _DesktopFooterLinks extends StatelessWidget {
-  const _DesktopFooterLinks();
-
   static const _style = TextStyle(
     fontSize: 13,
     letterSpacing: 0.4,
@@ -90,137 +69,60 @@ class _DesktopFooterLinks extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Wrap(
-      alignment: WrapAlignment.center,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      children: [
-        _FooterTextBtn(label: 'Blog', onTap: openBlog, style: _style),
-        _dot,
-        _FooterTextBtn(label: 'How to Play', onTap: openHowToPlay, style: _style),
-        _dot,
-        _FooterTextBtn(label: 'About Us', onTap: openAboutUs, style: _style),
-        _dot,
-        _FooterTextBtn(
-          label: 'Privacy Policy',
-          onTap: openPrivacyPolicy,
-          style: _style,
-        ),
-        _dot,
-        _FooterTextBtn(label: 'Terms', onTap: openTerms, style: _style),
-      ],
-    );
-  }
-}
-
-/// Two balanced rows — no awkward Wrap mid-word gaps on narrow phones.
-class _MobileFooterLinks extends StatelessWidget {
-  const _MobileFooterLinks();
-
-  static const _style = TextStyle(
-    fontSize: 12.5,
-    letterSpacing: 0.15,
-    fontWeight: FontWeight.w600,
-    height: 1.2,
-    color: Color(0xFF5A6570),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return const Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _FooterTap(label: 'Blog', onTap: openBlog, style: _style),
-            _FooterSep(),
-            _FooterTap(label: 'How to Play', onTap: openHowToPlay, style: _style),
-            _FooterSep(),
-            _FooterTap(label: 'About Us', onTap: openAboutUs, style: _style),
-          ],
-        ),
-        SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _FooterTap(
-              label: 'Privacy Policy',
-              onTap: openPrivacyPolicy,
-              style: _style,
+    return Container(
+      width: double.infinity,
+      color: HomepagePromoPanel.surface,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          TextButton(
+            onPressed: openBlog,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             ),
-            _FooterSep(),
-            _FooterTap(label: 'Terms', onTap: openTerms, style: _style),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _FooterSep extends StatelessWidget {
-  const _FooterSep();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8),
-      child: Text(
-        '·',
-        style: TextStyle(
-          color: Color(0xFFB0B8C1),
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-          height: 1,
-        ),
+            child: const Text('Blog', style: _style),
+          ),
+          _dot,
+          TextButton(
+            onPressed: openHowToPlay,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            child: const Text('How to Play', style: _style),
+          ),
+          _dot,
+          TextButton(
+            onPressed: openAboutUs,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            child: const Text('About Us', style: _style),
+          ),
+          _dot,
+          TextButton(
+            onPressed: openPrivacyPolicy,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            child: const Text('Privacy Policy', style: _style),
+          ),
+          _dot,
+          TextButton(
+            onPressed: openTerms,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF5A6570),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            ),
+            child: const Text('Terms', style: _style),
+          ),
+        ],
       ),
-    );
-  }
-}
-
-class _FooterTap extends StatelessWidget {
-  const _FooterTap({
-    required this.label,
-    required this.onTap,
-    required this.style,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final TextStyle style;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-        child: Text(label, style: style),
-      ),
-    );
-  }
-}
-
-class _FooterTextBtn extends StatelessWidget {
-  const _FooterTextBtn({
-    required this.label,
-    required this.onTap,
-    required this.style,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-  final TextStyle style;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        foregroundColor: const Color(0xFF5A6570),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      ),
-      child: Text(label, style: style),
     );
   }
 }
@@ -244,11 +146,11 @@ class _WinnerShowcase extends StatelessWidget {
     final showShimmer = loading && !hasData;
     final name = hasData && w!.name.isNotEmpty ? w.name : 'Coming soon';
     final score = hasData ? w!.score : 0;
-    final avatarSize = compact ? 84.0 : 128.0;
+    final avatarSize = compact ? 112.0 : 128.0;
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(compact ? 14 : 18),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: HomepagePromoPanel._line),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -262,13 +164,13 @@ class _WinnerShowcase extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: HomepagePromoPanel._gold.withValues(alpha: 0.14),
-            blurRadius: compact ? 12 : 18,
-            offset: Offset(0, compact ? 5 : 8),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(compact ? 14 : 18),
+        borderRadius: BorderRadius.circular(18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -286,10 +188,10 @@ class _WinnerShowcase extends StatelessWidget {
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(
-                compact ? 12 : 22,
-                compact ? 12 : 18,
-                compact ? 12 : 22,
-                compact ? 12 : 20,
+                compact ? 16 : 22,
+                compact ? 16 : 18,
+                compact ? 16 : 22,
+                compact ? 16 : 20,
               ),
               child: compact
                   ? _CompactWinnerBody(
@@ -402,68 +304,47 @@ class _CompactWinnerBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Mobile: photo left, identity right — same hierarchy as laptop, shorter card.
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Row(
-          children: [
-            _ChampionBadge(),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'Latest Winner',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: HomepagePromoPanel._goldDeep,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.2,
-                  height: 1.1,
-                ),
-              ),
-            ),
-          ],
+        const _ChampionBadge(),
+        const SizedBox(height: 8),
+        const Text(
+          'Latest Winner',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: HomepagePromoPanel._goldDeep,
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            letterSpacing: -0.2,
+            height: 1.1,
+          ),
         ),
+        const SizedBox(height: 14),
+        if (showShimmer)
+          _ShimmerCircle(size: avatarSize)
+        else
+          _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (showShimmer)
-              _ShimmerCircle(size: avatarSize)
-            else
-              _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (showShimmer) ...[
-                    const _ShimmerLine(widthFactor: 0.72, height: 16),
-                    const SizedBox(height: 10),
-                    const _ShimmerLine(widthFactor: 0.48, height: 28),
-                  ] else ...[
-                    Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: HomepagePromoPanel._ink,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.15,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    _ScorePill(score: score),
-                  ],
-                ],
-              ),
+        if (showShimmer) ...[
+          const _ShimmerLine(widthFactor: 0.5, height: 16),
+          const SizedBox(height: 12),
+          const _ShimmerLine(widthFactor: 0.36, height: 28),
+        ] else ...[
+          Text(
+            name,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: HomepagePromoPanel._ink,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 12),
+          _ScorePill(score: score),
+        ],
       ],
     );
   }

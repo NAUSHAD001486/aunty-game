@@ -336,8 +336,8 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
           if (kIsWeb && _awaitingStart) {
             final viewH = MediaQuery.sizeOf(context).height;
             final compact = maxW < 520;
-            // Leave a clear peek of Winner on first view; mobile gate a bit shorter.
-            final gateH = viewH * (compact ? 0.52 : 0.66);
+            // Leave a clear peek of Offer / Winner on first view.
+            final gateH = viewH * (compact ? 0.62 : 0.66);
             final sidePad = compact ? 6.0 : 10.0;
             final radius = compact ? 16.0 : 18.0;
 
