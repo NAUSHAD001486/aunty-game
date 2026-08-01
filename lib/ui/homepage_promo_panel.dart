@@ -52,9 +52,12 @@ class HomepagePromoPanel extends StatelessWidget {
   }
 }
 
-/// Site footer — distinct band below winner (home only, no game impact).
+/// Site footer — fills leftover home height so content sits at page bottom.
 class LandingPrivacyFooter extends StatelessWidget {
-  const LandingPrivacyFooter({super.key});
+  const LandingPrivacyFooter({super.key, this.minHeight});
+
+  /// When set (web home), footer band stretches and content pins to the bottom.
+  final double? minHeight;
 
   static const _band = Color(0xFFE8ECF0);
   static const _muted = Color(0xFF5A6570);
@@ -77,106 +80,116 @@ class LandingPrivacyFooter extends StatelessWidget {
   Widget build(BuildContext context) {
     final w = MediaQuery.sizeOf(context).width;
     final compact = w < 520;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
 
-    return ColoredBox(
-      color: _band,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          compact ? 16 : 28,
-          compact ? 36 : 42,
-          compact ? 16 : 28,
-          compact ? 44 : 48,
-        ),
-        child: Column(
-          children: [
-            Center(
-              child: Container(
-                width: compact ? 28 : 36,
-                height: 0.5,
-                color: const Color(0x35C9A227),
-              ),
-            ),
-            SizedBox(height: compact ? 20 : 22),
-            Text(
-              'AuntyPari',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: HomepagePromoPanel._ink.withValues(alpha: 0.88),
-                fontSize: compact ? 13 : 14,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.45,
-                height: 1.1,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Free online · Daily champion',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _muted.withValues(alpha: 0.85),
-                fontSize: 10.5,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.3,
-              ),
-            ),
-            SizedBox(height: compact ? 22 : 24),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 4,
-              runSpacing: 2,
-              children: [
-                _FooterTextLink(label: 'Blog', onTap: openBlog),
-                _FooterDot(),
-                _FooterTextLink(label: 'How to Play', onTap: openHowToPlay),
-                _FooterDot(),
-                _FooterTextLink(label: 'About Us', onTap: openAboutUs),
-              ],
-            ),
-            SizedBox(height: compact ? 12 : 14),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                TextButton(
-                  onPressed: openPrivacyPolicy,
-                  style: TextButton.styleFrom(
-                    foregroundColor: _muted,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        minHeight: minHeight ?? (compact ? 200.0 : 220.0),
+      ),
+      child: ColoredBox(
+        color: _band,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            compact ? 16 : 28,
+            compact ? 16 : 20,
+            compact ? 16 : 28,
+            (compact ? 28.0 : 32.0) + bottomInset,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Empty band above — pushes brand + links to true footer bottom.
+              const Spacer(),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'AuntyPari',
+                      textAlign: TextAlign.left,
+                      style: TextStyle(
+                        color: HomepagePromoPanel._ink.withValues(alpha: 0.88),
+                        fontSize: compact ? 13 : 14,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.45,
+                        height: 1.1,
+                      ),
                     ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text('Privacy Policy', style: _legalStyle),
-                ),
-                const _FooterDot(legal: true),
-                TextButton(
-                  onPressed: openTerms,
-                  style: TextButton.styleFrom(
-                    foregroundColor: _muted,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
+                    const SizedBox(height: 4),
+                    Text(
+                      'Free online · Daily champion',
+                      textAlign: TextAlign.left,
+                      style: TextStyle(
+                        color: _muted.withValues(alpha: 0.85),
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.3,
+                      ),
                     ),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: const Text('Terms of Use', style: _legalStyle),
+                  ],
                 ),
-              ],
-            ),
-            SizedBox(height: compact ? 16 : 18),
-            Text(
-              '© ${DateTime.now().year} AuntyPari',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _muted.withValues(alpha: 0.65),
-                fontSize: 10.5,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0.2,
               ),
-            ),
-          ],
+              SizedBox(height: compact ? 28 : 32),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 4,
+                runSpacing: 2,
+                children: [
+                  _FooterTextLink(label: 'Blog', onTap: openBlog),
+                  _FooterDot(),
+                  _FooterTextLink(label: 'How to Play', onTap: openHowToPlay),
+                  _FooterDot(),
+                  _FooterTextLink(label: 'About Us', onTap: openAboutUs),
+                ],
+              ),
+              SizedBox(height: compact ? 10 : 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: openPrivacyPolicy,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _muted,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Privacy Policy', style: _legalStyle),
+                  ),
+                  const _FooterDot(legal: true),
+                  TextButton(
+                    onPressed: openTerms,
+                    style: TextButton.styleFrom(
+                      foregroundColor: _muted,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Terms of Use', style: _legalStyle),
+                  ),
+                ],
+              ),
+              SizedBox(height: compact ? 14 : 16),
+              Text(
+                '© ${DateTime.now().year} AuntyPari',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: _muted.withValues(alpha: 0.65),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

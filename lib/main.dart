@@ -382,7 +382,14 @@ class _GameRootState extends State<_GameRoot> with WidgetsBindingObserver {
                       ),
                     ),
                     const HomepagePromoPanel(),
-                    const LandingPrivacyFooter(),
+                    LandingPrivacyFooter(
+                      // Fill leftover viewport so links sit at true page bottom.
+                      minHeight: (viewH -
+                              gateH -
+                              (compact ? 200.0 : 220.0) -
+                              (compact ? 14.0 : 18.0))
+                          .clamp(180.0, viewH),
+                    ),
                   ],
                 ),
               ),
