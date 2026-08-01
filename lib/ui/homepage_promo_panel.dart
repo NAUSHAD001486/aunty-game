@@ -52,17 +52,19 @@ class HomepagePromoPanel extends StatelessWidget {
   }
 }
 
-/// Site footer — brand mark + text links (home only, no game impact).
+/// Site footer — distinct band below winner (home only, no game impact).
 class LandingPrivacyFooter extends StatelessWidget {
   const LandingPrivacyFooter({super.key});
 
+  static const _band = Color(0xFFE8ECF0);
   static const _muted = Color(0xFF5A6570);
-  static const _inkSoft = Color(0xFF2A3340);
+  /// Same weight/size as before — softer color so links feel less “highlighted”.
   static const _navStyle = TextStyle(
     fontSize: 13,
     letterSpacing: 0.2,
     fontWeight: FontWeight.w600,
     height: 1.2,
+    color: Color(0xFF6B7580),
   );
   static const _legalStyle = TextStyle(
     fontSize: 12,
@@ -77,49 +79,47 @@ class LandingPrivacyFooter extends StatelessWidget {
     final compact = w < 520;
 
     return ColoredBox(
-      color: HomepagePromoPanel.surface,
+      color: _band,
       child: Padding(
         padding: EdgeInsets.fromLTRB(
           compact ? 16 : 28,
-          // Extra top air so footer sits below the winner card, not against it.
-          compact ? 22 : 28,
+          compact ? 36 : 42,
           compact ? 16 : 28,
-          compact ? 32 : 36,
+          compact ? 44 : 48,
         ),
         child: Column(
           children: [
-            // Short, thin hairline — does not span the full page width.
             Center(
               child: Container(
-                width: compact ? 36 : 44,
+                width: compact ? 28 : 36,
                 height: 0.5,
-                color: const Color(0x40C9A227),
+                color: const Color(0x35C9A227),
               ),
             ),
-            SizedBox(height: compact ? 18 : 20),
+            SizedBox(height: compact ? 20 : 22),
             Text(
               'AuntyPari',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: HomepagePromoPanel._ink,
-                fontSize: compact ? 13.5 : 14.5,
+                color: HomepagePromoPanel._ink.withValues(alpha: 0.88),
+                fontSize: compact ? 13 : 14,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 0.45,
                 height: 1.1,
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 4),
             Text(
               'Free online · Daily champion',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _muted.withValues(alpha: 0.88),
+                color: _muted.withValues(alpha: 0.85),
                 fontSize: 10.5,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 0.3,
               ),
             ),
-            SizedBox(height: compact ? 18 : 20),
+            SizedBox(height: compact ? 22 : 24),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 4,
@@ -132,14 +132,14 @@ class LandingPrivacyFooter extends StatelessWidget {
                 _FooterTextLink(label: 'About Us', onTap: openAboutUs),
               ],
             ),
-            SizedBox(height: compact ? 10 : 12),
+            SizedBox(height: compact ? 12 : 14),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 TextButton(
                   onPressed: openPrivacyPolicy,
                   style: TextButton.styleFrom(
-                    foregroundColor: _inkSoft,
+                    foregroundColor: _muted,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 4,
@@ -153,7 +153,7 @@ class LandingPrivacyFooter extends StatelessWidget {
                 TextButton(
                   onPressed: openTerms,
                   style: TextButton.styleFrom(
-                    foregroundColor: _inkSoft,
+                    foregroundColor: _muted,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 4,
@@ -165,12 +165,12 @@ class LandingPrivacyFooter extends StatelessWidget {
                 ),
               ],
             ),
-            SizedBox(height: compact ? 12 : 14),
+            SizedBox(height: compact ? 16 : 18),
             Text(
               '© ${DateTime.now().year} AuntyPari',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: _muted.withValues(alpha: 0.7),
+                color: _muted.withValues(alpha: 0.65),
                 fontSize: 10.5,
                 fontWeight: FontWeight.w500,
                 letterSpacing: 0.2,
@@ -215,7 +215,7 @@ class _FooterTextLink extends StatelessWidget {
     return TextButton(
       onPressed: onTap,
       style: TextButton.styleFrom(
-        foregroundColor: LandingPrivacyFooter._inkSoft,
+        foregroundColor: const Color(0xFF6B7580),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         minimumSize: Size.zero,
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -286,9 +286,10 @@ class _WinnerShowcase extends StatelessWidget {
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(
-                compact ? 14 : 22,
+                compact ? 10 : 22,
                 compact ? 14 : 18,
-                compact ? 14 : 22,
+                // Pull the whole winner composition toward the right edge.
+                compact ? 6 : 14,
                 compact ? 14 : 18,
               ),
               child: compact
@@ -400,61 +401,99 @@ class _CompactWinnerBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Title sits directly above the photo; name + score sit to the right.
+    // Whole block is right-aligned for a clean mobile composition.
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const _LatestWinnerTitle(),
+              const SizedBox(height: 8),
+              if (showShimmer)
+                _ShimmerCircle(size: avatarSize)
+              else
+                _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
+            ],
+          ),
+          const SizedBox(width: 12),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: avatarSize * 1.15),
+            child: showShimmer
+                ? const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ShimmerLine(widthFactor: 0.9, height: 15),
+                      SizedBox(height: 10),
+                      _ShimmerLine(widthFactor: 0.65, height: 22),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: HomepagePromoPanel._ink,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.12,
+                          height: 1.15,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      _ScorePill(score: score),
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact stylish label — sits above the winner photo.
+class _LatestWinnerTitle extends StatelessWidget {
+  const _LatestWinnerTitle();
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
-        const Text(
+        Text(
           'Latest Winner',
-          textAlign: TextAlign.right,
+          textAlign: TextAlign.center,
           style: TextStyle(
-            color: HomepagePromoPanel._goldDeep,
-            fontSize: 19,
-            fontWeight: FontWeight.w900,
-            letterSpacing: -0.2,
+            color: HomepagePromoPanel._goldDeep.withValues(alpha: 0.95),
+            fontSize: 13.5,
+            fontWeight: FontWeight.w800,
+            fontStyle: FontStyle.italic,
+            letterSpacing: 0.9,
             height: 1.1,
           ),
         ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            const Spacer(),
-            if (showShimmer)
-              _ShimmerCircle(size: avatarSize)
-            else
-              _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
-            const SizedBox(width: 12),
-            Flexible(
-              child: showShimmer
-                  ? const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _ShimmerLine(widthFactor: 0.72, height: 15),
-                        SizedBox(height: 10),
-                        _ShimmerLine(widthFactor: 0.48, height: 22),
-                      ],
-                    )
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          name,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: HomepagePromoPanel._ink,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 0.12,
-                            height: 1.15,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _ScorePill(score: score),
-                      ],
-                    ),
+        const SizedBox(height: 4),
+        Container(
+          width: 34,
+          height: 1.25,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(1),
+            gradient: LinearGradient(
+              colors: [
+                HomepagePromoPanel._gold.withValues(alpha: 0.05),
+                HomepagePromoPanel._gold.withValues(alpha: 0.75),
+                HomepagePromoPanel._gold.withValues(alpha: 0.05),
+              ],
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -472,17 +511,17 @@ class _ScorePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3ECD8),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x33A8892A)),
+        color: const Color(0xFFEEE8D8),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x28A8892A)),
       ),
       child: Text(
         score > 0 ? 'Score  $score' : 'Score  —',
         style: const TextStyle(
-          color: Color(0xFF7A6520),
-          fontSize: 12,
+          color: Color(0xFF6E5C28),
+          fontSize: 11.5,
           fontWeight: FontWeight.w700,
-          letterSpacing: 0.15,
+          letterSpacing: 0.12,
           height: 1.2,
         ),
       ),
