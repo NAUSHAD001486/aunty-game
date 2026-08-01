@@ -299,27 +299,22 @@ class _WinnerShowcase extends StatelessWidget {
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(
-                compact ? 10 : 22,
-                compact ? 14 : 18,
+                compact ? 10 : 18,
+                compact ? 14 : 16,
                 // Pull the whole winner composition toward the right edge.
-                compact ? 6 : 14,
-                compact ? 14 : 18,
+                compact ? 6 : 10,
+                compact ? 14 : 16,
               ),
-              child: compact
-                  ? _CompactWinnerBody(
-                      showShimmer: showShimmer,
-                      name: name,
-                      score: score,
-                      photoUrl: w?.photo ?? '',
-                      avatarSize: avatarSize,
-                    )
-                  : _WideWinnerBody(
-                      showShimmer: showShimmer,
-                      name: name,
-                      score: score,
-                      photoUrl: w?.photo ?? '',
-                      avatarSize: avatarSize,
-                    ),
+              // Same composition on mobile + laptop — avoids load-shell vs
+              // Flutter mismatch (old wide layout put the title beside photo).
+              child: _WinnerBody(
+                showShimmer: showShimmer,
+                name: name,
+                score: score,
+                photoUrl: w?.photo ?? '',
+                avatarSize: avatarSize,
+                compact: compact,
+              ),
             ),
           ],
         ),
@@ -328,13 +323,14 @@ class _WinnerShowcase extends StatelessWidget {
   }
 }
 
-class _WideWinnerBody extends StatelessWidget {
-  const _WideWinnerBody({
+class _WinnerBody extends StatelessWidget {
+  const _WinnerBody({
     required this.showShimmer,
     required this.name,
     required this.score,
     required this.photoUrl,
     required this.avatarSize,
+    required this.compact,
   });
 
   final bool showShimmer;
@@ -342,80 +338,12 @@ class _WideWinnerBody extends StatelessWidget {
   final int score;
   final String photoUrl;
   final double avatarSize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        if (showShimmer)
-          _ShimmerCircle(size: avatarSize)
-        else
-          _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
-        const SizedBox(width: 20),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Latest Winner',
-                style: TextStyle(
-                  color: HomepagePromoPanel._goldDeep,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.3,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (showShimmer) ...[
-                const _ShimmerLine(widthFactor: 0.55, height: 18),
-                const SizedBox(height: 10),
-                const _ShimmerLine(widthFactor: 0.32, height: 24),
-              ] else ...[
-                Text(
-                  name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: HomepagePromoPanel._ink,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.15,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _ScorePill(score: score),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _CompactWinnerBody extends StatelessWidget {
-  const _CompactWinnerBody({
-    required this.showShimmer,
-    required this.name,
-    required this.score,
-    required this.photoUrl,
-    required this.avatarSize,
-  });
-
-  final bool showShimmer;
-  final String name;
-  final int score;
-  final String photoUrl;
-  final double avatarSize;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     // Title sits directly above the photo; name + score sit to the right.
-    // Whole block is right-aligned for a clean mobile composition.
+    // Whole block is right-aligned (matches HTML shell + mobile).
     return Align(
       alignment: Alignment.centerRight,
       child: Row(
@@ -425,17 +353,19 @@ class _CompactWinnerBody extends StatelessWidget {
           Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const _LatestWinnerTitle(),
-              const SizedBox(height: 8),
+              _LatestWinnerTitle(compact: compact),
+              SizedBox(height: compact ? 8 : 10),
               if (showShimmer)
                 _ShimmerCircle(size: avatarSize)
               else
                 _WinnerAvatar(photoUrl: photoUrl, size: avatarSize),
             ],
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: compact ? 12 : 16),
           ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: avatarSize * 1.15),
+            constraints: BoxConstraints(
+              maxWidth: compact ? avatarSize * 1.15 : avatarSize * 1.35,
+            ),
             child: showShimmer
                 ? const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,15 +383,15 @@ class _CompactWinnerBody extends StatelessWidget {
                         name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: HomepagePromoPanel._ink,
-                          fontSize: 17,
+                          fontSize: compact ? 17 : 20,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.12,
                           height: 1.15,
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: compact ? 8 : 10),
                       _ScorePill(score: score),
                     ],
                   ),
@@ -472,9 +402,11 @@ class _CompactWinnerBody extends StatelessWidget {
   }
 }
 
-/// Compact stylish label — sits above the winner photo.
+/// Stylish label — sits above the winner photo (mobile + laptop).
 class _LatestWinnerTitle extends StatelessWidget {
-  const _LatestWinnerTitle();
+  const _LatestWinnerTitle({required this.compact});
+
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -486,7 +418,7 @@ class _LatestWinnerTitle extends StatelessWidget {
           textAlign: TextAlign.center,
           style: TextStyle(
             color: HomepagePromoPanel._goldDeep.withValues(alpha: 0.95),
-            fontSize: 13.5,
+            fontSize: compact ? 13.5 : 15,
             fontWeight: FontWeight.w800,
             fontStyle: FontStyle.italic,
             letterSpacing: 0.9,
@@ -495,7 +427,7 @@ class _LatestWinnerTitle extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Container(
-          width: 34,
+          width: compact ? 34 : 40,
           height: 1.25,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(1),
